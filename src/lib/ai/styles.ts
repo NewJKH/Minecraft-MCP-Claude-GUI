@@ -24,19 +24,19 @@ export const ART_STYLES: {
     id: "vanilla",
     label: "바닐라 톤",
     hint: "회색 베벨 패널. 아이템 아이콘이 잘 보이는 무난한 배경",
-    defaults: { pixelBlock: 2, colors: 64, punch: 1.1, drawSlots: true },
+    defaults: { pixelBlock: 1, colors: 96, punch: 1.1, drawSlots: true },
   },
   {
     id: "pixel_ui",
     label: "카툰 픽셀 UI",
     hint: "색 구획이 나뉜 알록달록한 판때기. 마켓/상점 메인에 어울림",
-    defaults: { pixelBlock: 3, colors: 32, punch: 1.35, drawSlots: false },
+    defaults: { pixelBlock: 1, colors: 96, punch: 1.3, drawSlots: false },
   },
   {
     id: "pixel_scene",
     label: "픽셀 일러스트",
     hint: "대장간·주방 같은 장면을 통째로 그린 배경",
-    defaults: { pixelBlock: 3, colors: 32, punch: 1.45, drawSlots: false },
+    defaults: { pixelBlock: 1, colors: 128, punch: 1.25, drawSlots: false },
   },
 ];
 

@@ -13,6 +13,10 @@ export type PixelizeOptions = {
    * 양자화 전에 색을 미리 밀어 올린다. 1 = 그대로.
    */
   punch?: number;
+  /** 축소 후 엣지 강조. 끄면 뭉개진다. 기본 true. */
+  sharpen?: boolean;
+  /** 팔레트 양자화 시 디더링 강도 0~1. 0이면 밴딩이 생긴다. */
+  dither?: number;
   /** 이 색과 tolerance 안쪽이면 투명 처리 (예: "#00ff00") */
   keyColor?: string;
   keyTolerance?: number;
@@ -70,14 +74,31 @@ export async function pixelize(
       .linear(punch, 128 * (1 - punch));
   }
 
-  // 논리 격자로 축소 (면적 평균 성격의 축소라 색이 자연스럽게 섞인다)
-  pipeline = pipeline.resize(opts.logicalWidth, opts.logicalHeight, {
-    fit: "fill",
-    kernel: sharp.kernel.lanczos3,
-  });
+  // 1024px를 한 번에 목표 크기로 떨구면 디테일이 평균값으로 뭉개진다.
+  // 2배 크기까지만 줄이고 → 엣지를 세운 뒤 → 마지막 절반을 줄인다.
+  const midW = opts.logicalWidth * 2;
+  const midH = opts.logicalHeight * 2;
+
+  pipeline = pipeline
+    .resize(midW, midH, { fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .sharpen({ sigma: 0.8, m1: 1.5, m2: 0.4 })
+    .resize(opts.logicalWidth, opts.logicalHeight, {
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3,
+    });
+
+  // 축소가 끝난 뒤 한 번 더. 픽셀 하나하나의 경계를 살려 '뭉갬'을 없앤다.
+  if (opts.sharpen !== false) {
+    pipeline = pipeline.sharpen({ sigma: 0.6, m1: 2, m2: 0.5 });
+  }
 
   if (opts.colors && opts.colors >= 2 && opts.colors <= 256) {
-    pipeline = pipeline.png({ palette: true, colors: opts.colors, dither: 0 });
+    // dither 0은 색 경계에 계단(밴딩)을 만든다. 약하게 섞어야 덜 뭉갠다.
+    pipeline = pipeline.png({
+      palette: true,
+      colors: opts.colors,
+      dither: opts.dither ?? 0.4,
+    });
   } else {
     pipeline = pipeline.png();
   }
@@ -114,6 +135,8 @@ export async function buildGuiTexture(
     pixelBlock?: number;
     colors?: number;
     punch?: number;
+    sharpen?: boolean;
+    dither?: number;
     keyColor?: string;
     keyTolerance?: number;
     /** 슬롯 우물을 텍스처에 박을지 (기본 true). 바닐라 텍스처는 슬롯이 그려져 있다. */
@@ -132,6 +155,8 @@ export async function buildGuiTexture(
     logicalHeight: lh,
     colors: opts.colors,
     punch: opts.punch,
+    sharpen: opts.sharpen,
+    dither: opts.dither,
     keyColor: opts.keyColor,
     keyTolerance: opts.keyTolerance,
   });
