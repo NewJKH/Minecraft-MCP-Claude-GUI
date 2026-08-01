@@ -239,6 +239,15 @@ export async function buildFontTexture(
   width: number,
   height: number,
   opts: {
+    /**
+     * 몇 픽셀을 한 덩어리로 볼지.
+     *
+     * 이게 없으면 1024짜리 생성물을 384로 겨우 2.7배 줄이게 되는데,
+     * 그 정도로는 확산 모델 특유의 부드러운 그라데이션이 그대로 살아남아
+     * 픽셀아트가 아니라 흐릿한 그림이 된다. 논리 격자로 크게 줄였다가
+     * nearest로 되돌려야 픽셀 덩어리가 선다.
+     */
+    pixelBlock?: number;
     colors?: number;
     punch?: number;
     sharpen?: boolean;
@@ -247,11 +256,21 @@ export async function buildFontTexture(
     keyTolerance?: number;
   } = {}
 ): Promise<Buffer> {
-  return pixelize(input, {
-    logicalWidth: width,
-    logicalHeight: height,
-    ...opts,
+  const { pixelBlock, ...rest } = opts;
+  const block = Math.max(1, Math.floor(pixelBlock ?? 1));
+
+  const small = await pixelize(input, {
+    logicalWidth: Math.max(1, Math.round(width / block)),
+    logicalHeight: Math.max(1, Math.round(height / block)),
+    ...rest,
   });
+
+  if (block === 1) return small;
+
+  return sharp(small)
+    .resize(width, height, { kernel: sharp.kernel.nearest, fit: "fill" })
+    .png()
+    .toBuffer();
 }
 
 /** 아이템 텍스처는 정사각 16/32/64. */

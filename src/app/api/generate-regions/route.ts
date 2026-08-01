@@ -18,6 +18,7 @@ type Body = {
   /** 칠하지 않은 곳을 채우는 배경 레이어. 비우면 투명. */
   background?: { prompt: string; artStyle?: ArtStyle };
   regions: (Region & { artStyle?: ArtStyle })[];
+  pixelBlock?: number;
   colors?: number;
   punch?: number;
   provider?: ProviderId;
@@ -50,7 +51,11 @@ export async function POST(req: Request) {
   const notes: string[] = [];
   const used: { id: string; label: string; slots: number; provider: string }[] = [];
 
-  const pixelOpts = { colors: body.colors, punch: body.punch };
+  const pixelOpts = {
+    pixelBlock: body.pixelBlock ?? 2,
+    colors: body.colors,
+    punch: body.punch,
+  };
 
   try {
     // 1) 배경 레이어

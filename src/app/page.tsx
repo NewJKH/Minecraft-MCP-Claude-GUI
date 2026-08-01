@@ -6,6 +6,7 @@ import { GUI_PRESETS, ITEM_SIZES, findPreset } from "@/lib/mc/canvas";
 import { ART_STYLES, styleDefaults, type ArtStyle } from "@/lib/ai/styles";
 import { PACK_FORMATS, vanillaTexturePath, namespacedItemPath } from "@/lib/pack/build";
 import { GuiPreview } from "@/components/GuiPreview";
+import { FontGuiPreview } from "@/components/FontGuiPreview";
 
 type Kind = "gui" | "item" | "font";
 
@@ -69,6 +70,15 @@ export default function Home() {
   const [namespace, setNamespace] = useState("custom");
   const [assetName, setAssetName] = useState("market");
   const [fontResult, setFontResult] = useState<FontResult | null>(null);
+  const [showSlotGuide, setShowSlotGuide] = useState(true);
+
+  /** 폰트 GUI를 지금 선택된 컨테이너 GUI에 딱 맞춘다. */
+  function fitToPreset(bleed = 0) {
+    setFontWidth(preset.guiWidth + bleed * 2);
+    setFontHeight(preset.guiHeight + bleed * 2);
+    setGlyphLeft(-bleed);
+    setGlyphTop(-bleed);
+  }
 
   const preset = useMemo(() => findPreset(presetId), [presetId]);
 
@@ -273,9 +283,35 @@ export default function Home() {
             <div className="space-y-3 rounded-md bg-white/5 p-3 ring-1 ring-white/10">
               <p className="text-[11px] leading-relaxed text-zinc-500">
                 타이틀에 비트맵 글리프를 얹는 방식이라{" "}
-                <span className="text-emerald-400">크기 제한이 없습니다.</span> 176×222 천장이
-                사라집니다.
+                <span className="text-emerald-400">크기 제한이 없습니다.</span> 다만 실제로는
+                컨테이너 GUI 위에 얹히므로 슬롯 격자와 맞춰야 합니다.
               </p>
+
+              <Field label="정렬 대상">
+                <select
+                  value={presetId}
+                  onChange={(e) => setPresetId(e.target.value)}
+                  className="w-full rounded-md bg-black/30 px-2 py-1.5 text-sm ring-1 ring-white/10 outline-none"
+                >
+                  {GUI_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id} className="bg-zinc-900">
+                      {p.label} — {p.guiWidth}×{p.guiHeight}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <div className="flex gap-1.5">
+                {[0, 8, 24].map((b) => (
+                  <button
+                    key={b}
+                    onClick={() => fitToPreset(b)}
+                    className="flex-1 rounded-md bg-white/5 px-2 py-1.5 text-xs text-zinc-300 ring-1 ring-white/10 hover:bg-white/10"
+                  >
+                    {b === 0 ? "GUI에 딱 맞추기" : `여백 +${b}px`}
+                  </button>
+                ))}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="가로">
                   <input
@@ -355,7 +391,7 @@ export default function Home() {
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            {kind === "gui" && (
+            {kind !== "item" && (
               <Field label={`픽셀 덩어리 ${pixelBlock}px`}>
                 <input
                   type="range"
@@ -523,22 +559,26 @@ export default function Home() {
         <section className="space-y-6">
           <div className="flex flex-wrap gap-6">
             {kind === "font" ? (
-              <div className="rounded-md bg-[#141418] p-3 ring-1 ring-white/10">
-                {current ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={current}
-                    alt="폰트 GUI 미리보기"
-                    style={{ imageRendering: "pixelated", maxWidth: 512 }}
+              <div className="space-y-2">
+                <FontGuiPreview
+                  src={current}
+                  width={fontWidth}
+                  height={fontHeight}
+                  glyphLeft={glyphLeft}
+                  glyphTop={glyphTop}
+                  preset={preset}
+                  showGrid={showSlotGuide}
+                  scale={2}
+                />
+                <label className="flex items-center gap-2 text-xs text-zinc-400">
+                  <input
+                    type="checkbox"
+                    checked={showSlotGuide}
+                    onChange={(e) => setShowSlotGuide(e.target.checked)}
+                    className="accent-emerald-500"
                   />
-                ) : (
-                  <div
-                    className="grid place-items-center text-xs text-zinc-600"
-                    style={{ width: 320, height: 256 }}
-                  >
-                    아직 생성 전
-                  </div>
-                )}
+                  슬롯 격자 안내선 ({preset.label})
+                </label>
               </div>
             ) : (
               <GuiPreview src={current} preset={preset} scale={2} showGrid={kind === "gui"} />

@@ -117,6 +117,7 @@ export async function POST(req: Request) {
         provider
       );
       const png = await buildFontTexture(gen.png, w, h, {
+        pixelBlock: body.pixelBlock ?? 2,
         colors: body.colors,
         punch: body.punch,
         keyColor: body.keyColor,
