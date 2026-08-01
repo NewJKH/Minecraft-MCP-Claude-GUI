@@ -1,39 +1,100 @@
 import type { GuiPreset, ItemSize } from "@/lib/mc/canvas";
+import type { ArtStyle } from "@/lib/ai/styles";
+
+export type { ArtStyle };
 
 /**
  * 이미지 모델에 넘길 프롬프트를 만든다.
  * Claude는 여기서 '사용자 문장 → 텍스처 묘사'로 다듬는 역할만 한다 (이미지 생성 불가).
  */
 
-const GUI_RULES = [
-  "flat 2D game UI panel texture, orthographic front view, no perspective, no 3D tilt",
-  "Minecraft resource pack art style, crisp pixel edges, limited palette, hard shadows",
-  "the panel fills the entire frame edge to edge, centered, no drop shadow outside the panel",
-  "no text, no letters, no numbers, no watermark, no logo",
-  "no characters, no hands, no cursor",
-].join(", ");
+/**
+ * 확산 모델은 그냥 두면 회화풍(부드러운 조명·블러·안티에일리어싱)으로 흘러간다.
+ * 픽셀아트를 얻으려면 "픽셀아트"라고 말하는 것만으로 부족하고,
+ * 외곽선·평면채색·팔레트 제한을 명시하고 사진풍 어휘를 직접 금지해야 한다.
+ */
+const PIXEL_CORE =
+  "pixel art, 16-bit SNES sprite art, thick dark outlines, flat cel-shaded colors, " +
+  "limited palette, visible square pixels, hard-edged shading";
+
+// 부정문은 짧게. FLUX는 긴 금지 목록을 잘 못 지키고, "no text"를 길게 늘어놓으면
+// 오히려 글자를 그려 넣는다.
+const NOT_PAINTERLY = "not photorealistic, no blur, no soft gradients";
+
+/**
+ * 스타일 토큰을 **문장 맨 앞**에 둔다. 확산 모델은 앞쪽 토큰에 가중치를 크게 주므로
+ * 주제부터 쓰면 스타일이 통째로 무시된다.
+ *
+ * "menu", "UI", "screen" 같은 단어는 피한다 — 모델이 소프트웨어 목업을 그려버린다.
+ */
+const STYLE_RULES: Record<ArtStyle, { lead: string; tail: string }> = {
+  vanilla: {
+    lead: `${PIXEL_CORE}, muted grey stone and wood tones, low contrast`,
+    tail:
+      "a plain beveled rectangular panel, raised border with light top-left edge " +
+      `and dark bottom-right edge, ${NOT_PAINTERLY}`,
+  },
+
+  // 레퍼런스: MARKETPLACE 판 — 색 블록으로 구획된 알록달록한 판때기
+  pixel_ui: {
+    lead: `${PIXEL_CORE}, bright candy palette of teal lime purple orange and cream`,
+    tail:
+      "drawn as a signboard split into several flat colored rectangles, " +
+      "each rectangle framed by a thick dark border and a lighter inner edge, " +
+      "cute chibi characters and props sitting inside the rectangles, " +
+      `straight-on front view, ${NOT_PAINTERLY}`,
+  },
+
+  // 레퍼런스: 대장간 화덕 — 장면 일러스트
+  pixel_scene: {
+    lead: `${PIXEL_CORE}, warm rich colors, strong silhouettes`,
+    tail:
+      "an interior scene with props arranged symmetrically against a back wall, " +
+      "single warm light source with hard-edged light pools, " +
+      `straight-on front view, no vanishing point, ${NOT_PAINTERLY}`,
+  },
+};
 
 const ITEM_RULES = [
-  "single game item icon, flat front-facing 45-degree Minecraft item style",
-  "pixel art, crisp hard edges, limited palette, strong outline",
-  "centered, fills most of the frame, plain solid background",
-  "no text, no watermark, no shadow on the ground",
+  "centered single object filling most of the frame, plain solid background",
+  "front-facing 45-degree Minecraft item angle",
+  NOT_PAINTERLY,
+  "no ground shadow",
 ].join(", ");
 
-export function buildGuiPrompt(userPrompt: string, preset: GuiPreset): string {
-  return [
-    `A Minecraft container GUI background panel: ${userPrompt}.`,
-    `Aspect ratio must match ${preset.guiWidth}x${preset.guiHeight}.`,
-    `Leave ${preset.slots.length} inventory slot areas readable — keep the panel interior calm and low-contrast so item icons stay visible.`,
-    GUI_RULES,
-  ].join(" ");
+export function buildGuiPrompt(
+  userPrompt: string,
+  preset: GuiPreset,
+  style: ArtStyle = "vanilla",
+  opts: { drawSlots?: boolean } = {}
+): string {
+  const { lead, tail } = STYLE_RULES[style];
+
+  const parts = [
+    `${lead}.`,
+    `${userPrompt},`,
+    tail + ",",
+    "fills the whole frame edge to edge, no margin",
+  ];
+
+  // 슬롯을 나중에 합성한다면 그 자리는 비워둬야 그림이 다 묻힌다
+  if (opts.drawSlots !== false) {
+    parts.push(
+      "keep the lower two thirds quiet and flat, put the detail in the top band and along the border"
+    );
+  }
+
+  parts.push("no text");
+  return parts.join(" ");
 }
 
 export function buildItemPrompt(userPrompt: string, size: ItemSize): string {
   return [
-    `A Minecraft item texture: ${userPrompt}.`,
-    `It will be downscaled to ${size}x${size} pixels, so keep shapes chunky and readable at that size.`,
-    ITEM_RULES,
+    `${PIXEL_CORE}.`,
+    `${userPrompt},`,
+    ITEM_RULES + ",",
+    `chunky shapes that stay readable when shrunk to ${size} pixels,`,
+    "no text",
   ].join(" ");
 }
 

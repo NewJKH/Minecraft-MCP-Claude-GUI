@@ -7,7 +7,12 @@ import {
   upscaleNearest,
 } from "@/lib/image/pixelize";
 import { generateImage, defaultProvider, type ProviderId } from "@/lib/ai/image";
-import { buildGuiPrompt, buildItemPrompt, refineWithClaude } from "@/lib/ai/prompt";
+import {
+  buildGuiPrompt,
+  buildItemPrompt,
+  refineWithClaude,
+  type ArtStyle,
+} from "@/lib/ai/prompt";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -19,6 +24,7 @@ type Body = {
   size?: number;
   pixelBlock?: number;
   colors?: number;
+  punch?: number;
   keyColor?: string;
   keyTolerance?: number;
   provider?: ProviderId;
@@ -26,6 +32,7 @@ type Body = {
   drawSlots?: boolean;
   slotStyle?: "vanilla" | "dark" | "light";
   slotOpacity?: number;
+  artStyle?: ArtStyle;
 };
 
 const dataUrl = (b: Buffer) => `data:image/png;base64,${b.toString("base64")}`;
@@ -56,6 +63,7 @@ export async function POST(req: Request) {
       const gen = await generateImage({ prompt, width: 1024, height: 1024 }, provider);
       const png = await buildItemTexture(gen.png, size, {
         colors: body.colors,
+        punch: body.punch,
         keyColor: body.keyColor,
         keyTolerance: body.keyTolerance,
       });
@@ -73,7 +81,9 @@ export async function POST(req: Request) {
     }
 
     const preset = findPreset(body.presetId ?? "chest_6");
-    let prompt = buildGuiPrompt(body.prompt, preset);
+    let prompt = buildGuiPrompt(body.prompt, preset, body.artStyle ?? "vanilla", {
+      drawSlots: body.drawSlots,
+    });
     if (body.refine) prompt = await refineWithClaude(prompt);
 
     const gen = await generateImage(
@@ -84,6 +94,7 @@ export async function POST(req: Request) {
     const png = await buildGuiTexture(gen.png, preset, {
       pixelBlock: body.pixelBlock,
       colors: body.colors,
+      punch: body.punch,
       keyColor: body.keyColor,
       keyTolerance: body.keyTolerance,
       drawSlots: body.drawSlots,

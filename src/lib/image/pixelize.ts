@@ -8,6 +8,11 @@ export type PixelizeOptions = {
   logicalHeight: number;
   /** 팔레트 색 수 제한 (2~256). 없으면 양자화 안 함. */
   colors?: number;
+  /**
+   * 채도/대비 부스트. 확산 모델 출력은 팔레트를 줄이면 회색으로 뭉개지므로
+   * 양자화 전에 색을 미리 밀어 올린다. 1 = 그대로.
+   */
+  punch?: number;
   /** 이 색과 tolerance 안쪽이면 투명 처리 (예: "#00ff00") */
   keyColor?: string;
   keyTolerance?: number;
@@ -55,13 +60,21 @@ export async function pixelize(
     buf = await applyColorKey(buf, opts.keyColor, opts.keyTolerance ?? 40);
   }
 
-  let pipeline = sharp(buf)
-    .ensureAlpha()
-    // 1) 평균화하며 논리 격자로 축소 → 색이 뭉개지지 않게 lanczos 대신 area 성격의 축소
-    .resize(opts.logicalWidth, opts.logicalHeight, {
-      fit: "fill",
-      kernel: sharp.kernel.lanczos3,
-    });
+  let pipeline = sharp(buf).ensureAlpha();
+
+  const punch = opts.punch ?? 1;
+  if (punch !== 1) {
+    // 대비는 중간값(128) 기준으로 벌린다
+    pipeline = pipeline
+      .modulate({ saturation: punch })
+      .linear(punch, 128 * (1 - punch));
+  }
+
+  // 논리 격자로 축소 (면적 평균 성격의 축소라 색이 자연스럽게 섞인다)
+  pipeline = pipeline.resize(opts.logicalWidth, opts.logicalHeight, {
+    fit: "fill",
+    kernel: sharp.kernel.lanczos3,
+  });
 
   if (opts.colors && opts.colors >= 2 && opts.colors <= 256) {
     pipeline = pipeline.png({ palette: true, colors: opts.colors, dither: 0 });
@@ -100,6 +113,7 @@ export async function buildGuiTexture(
   opts: {
     pixelBlock?: number;
     colors?: number;
+    punch?: number;
     keyColor?: string;
     keyTolerance?: number;
     /** 슬롯 우물을 텍스처에 박을지 (기본 true). 바닐라 텍스처는 슬롯이 그려져 있다. */
@@ -117,6 +131,7 @@ export async function buildGuiTexture(
     logicalWidth: lw,
     logicalHeight: lh,
     colors: opts.colors,
+    punch: opts.punch,
     keyColor: opts.keyColor,
     keyTolerance: opts.keyTolerance,
   });
@@ -171,12 +186,18 @@ export async function assertGuiCanvas(buf: Buffer): Promise<void> {
 export async function buildItemTexture(
   input: Buffer,
   size: ItemSize,
-  opts: { colors?: number; keyColor?: string; keyTolerance?: number } = {}
+  opts: {
+    colors?: number;
+    punch?: number;
+    keyColor?: string;
+    keyTolerance?: number;
+  } = {}
 ): Promise<Buffer> {
   return pixelize(input, {
     logicalWidth: size,
     logicalHeight: size,
     colors: opts.colors,
+    punch: opts.punch,
     keyColor: opts.keyColor,
     keyTolerance: opts.keyTolerance,
   });

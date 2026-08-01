@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { GUI_PRESETS, ITEM_SIZES, findPreset } from "@/lib/mc/canvas";
+import { ART_STYLES, styleDefaults, type ArtStyle } from "@/lib/ai/styles";
 import { PACK_FORMATS, vanillaTexturePath, namespacedItemPath } from "@/lib/pack/build";
 import { GuiPreview } from "@/components/GuiPreview";
 
@@ -24,7 +25,9 @@ export default function Home() {
   const [itemId, setItemId] = useState("my_item");
   const [pixelBlock, setPixelBlock] = useState(2);
   const [colors, setColors] = useState(64);
+  const [punch, setPunch] = useState(110);
   const [refine, setRefine] = useState(false);
+  const [artStyle, setArtStyle] = useState<ArtStyle>("vanilla");
   const [drawSlots, setDrawSlots] = useState(true);
   const [slotStyle, setSlotStyle] = useState("vanilla");
   const [slotOpacity, setSlotOpacity] = useState(100);
@@ -72,6 +75,8 @@ export default function Home() {
           colors,
           provider: provider || undefined,
           refine,
+          punch: punch / 100,
+          artStyle,
           drawSlots,
           slotStyle,
           slotOpacity: slotOpacity / 100,
@@ -241,7 +246,48 @@ export default function Home() {
                 className="w-full accent-emerald-500"
               />
             </Field>
+            <Field label={`채도·대비 ${punch}%`} className="col-span-2">
+              <input
+                type="range"
+                min={100}
+                max={200}
+                step={5}
+                value={punch}
+                onChange={(e) => setPunch(Number(e.target.value))}
+                className="w-full accent-emerald-500"
+              />
+            </Field>
           </div>
+
+          {kind === "gui" && (
+            <Field label="아트 스타일">
+              <div className="grid grid-cols-3 gap-1.5">
+                {ART_STYLES.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      setArtStyle(s.id);
+                      const d = styleDefaults(s.id);
+                      setPixelBlock(d.pixelBlock);
+                      setColors(d.colors);
+                      setPunch(Math.round(d.punch * 100));
+                      setDrawSlots(d.drawSlots);
+                    }}
+                    className={`rounded-md px-2 py-1.5 text-xs ring-1 transition ${
+                      artStyle === s.id
+                        ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/40"
+                        : "bg-white/5 text-zinc-400 ring-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                {ART_STYLES.find((s) => s.id === artStyle)?.hint}
+              </p>
+            </Field>
+          )}
 
           {kind === "gui" && (
             <div className="rounded-md bg-white/5 p-3 ring-1 ring-white/10">
