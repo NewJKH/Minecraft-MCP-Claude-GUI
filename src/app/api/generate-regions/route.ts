@@ -26,6 +26,8 @@ type Body = {
   drawSlots?: boolean;
   slotStyle?: "vanilla" | "dark" | "light";
   slotOpacity?: number;
+  /** 칠한 칸에도 우물을 덧그릴지. 기본은 안 그린다(영역 그림이 우물을 대신). */
+  keepSlotsOnRegions?: boolean;
 };
 
 const dataUrl = (b: Buffer) => `data:image/png;base64,${b.toString("base64")}`;
@@ -106,11 +108,16 @@ export async function POST(req: Request) {
       });
     }
 
-    // 3) 슬롯 우물 + 256x256 마무리
+    // 3) 슬롯 우물 + 256x256 마무리.
+    //    칠한 칸은 그 영역 그림이 우물 자리를 대신하므로 우물을 그리지 않는다.
+    const painted = (body.regions ?? []).flatMap((r) =>
+      r.prompt?.trim() ? r.slots : []
+    );
     const png = await finalizeGuiCanvas(canvas, preset, {
       drawSlots: body.drawSlots,
       slotStyle: body.slotStyle,
       slotOpacity: body.slotOpacity,
+      excludeSlots: body.keepSlotsOnRegions ? [] : painted,
     });
     await assertGuiCanvas(png);
 

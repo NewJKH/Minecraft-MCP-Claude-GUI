@@ -44,13 +44,22 @@ export function allSlots(preset: GuiPreset): SlotRect[] {
   ];
 }
 
-/** guiWidth x guiHeight 크기의 투명 PNG에 슬롯 우물만 그린다. */
+/**
+ * guiWidth x guiHeight 크기의 투명 PNG에 슬롯 우물만 그린다.
+ *
+ * @param exclude 우물을 그리지 않을 슬롯 인덱스. 영역을 칠한 칸은 그 그림이
+ *                우물 자리를 대신하므로 여기에 넣어 덮어쓰지 않게 한다.
+ */
 export async function renderSlotOverlay(
   preset: GuiPreset,
   style: SlotStyle = "vanilla",
-  opacity = 1
+  opacity = 1,
+  exclude: number[] = []
 ): Promise<Buffer> {
-  const body = allSlots(preset).map((s) => well(s, style)).join("");
+  const skip = new Set(exclude);
+  const body = allSlots(preset)
+    .map((s, i) => (skip.has(i) ? "" : well(s, style)))
+    .join("");
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${preset.guiWidth}" height="${preset.guiHeight}">` +
     `<g opacity="${Math.min(1, Math.max(0, opacity))}">${body}</g></svg>`;

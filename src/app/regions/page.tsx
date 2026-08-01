@@ -32,7 +32,8 @@ export default function RegionsPage() {
   const [colors, setColors] = useState(96);
   const [punch, setPunch] = useState(130);
   const [drawSlots, setDrawSlots] = useState(true);
-  const [slotOpacity, setSlotOpacity] = useState(45);
+  const [slotOpacity, setSlotOpacity] = useState(100);
+  const [keepSlotsOnRegions, setKeepSlotsOnRegions] = useState(false);
 
   const [providers, setProviders] = useState<string[]>([]);
   const [provider, setProvider] = useState("");
@@ -87,6 +88,7 @@ export default function RegionsPage() {
           provider: provider || undefined,
           drawSlots,
           slotOpacity: slotOpacity / 100,
+          keepSlotsOnRegions,
         }),
       });
       const data = await res.json();
@@ -308,14 +310,30 @@ export default function RegionsPage() {
               슬롯 우물 굽기
             </label>
             {drawSlots && (
-              <Slider
-                label={`슬롯 불투명도 ${slotOpacity}%`}
-                min={10}
-                max={100}
-                step={5}
-                value={slotOpacity}
-                onChange={setSlotOpacity}
-              />
+              <>
+                <Slider
+                  label={`슬롯 불투명도 ${slotOpacity}%`}
+                  min={10}
+                  max={100}
+                  step={5}
+                  value={slotOpacity}
+                  onChange={setSlotOpacity}
+                />
+                <label className="flex items-start gap-2 text-sm text-zinc-400">
+                  <input
+                    type="checkbox"
+                    checked={keepSlotsOnRegions}
+                    onChange={(e) => setKeepSlotsOnRegions(e.target.checked)}
+                    className="mt-1 accent-emerald-500"
+                  />
+                  <span>
+                    칠한 칸에도 우물 덧그리기
+                    <span className="mt-0.5 block text-[11px] text-zinc-600">
+                      끄면 영역 그림이 우물 자리를 그대로 덮어씁니다 (기본)
+                    </span>
+                  </span>
+                </label>
+              </>
             )}
 
             <select

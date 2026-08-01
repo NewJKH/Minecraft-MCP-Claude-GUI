@@ -182,7 +182,13 @@ export async function buildGuiTexture(
 export async function finalizeGuiCanvas(
   art: Buffer,
   preset: GuiPreset,
-  opts: { drawSlots?: boolean; slotStyle?: SlotStyle; slotOpacity?: number } = {}
+  opts: {
+    drawSlots?: boolean;
+    slotStyle?: SlotStyle;
+    slotOpacity?: number;
+    /** 우물을 그리지 않을 슬롯. 영역을 칠한 칸은 그 그림이 우물을 대신한다. */
+    excludeSlots?: number[];
+  } = {}
 ): Promise<Buffer> {
   let out = art;
 
@@ -191,7 +197,8 @@ export async function finalizeGuiCanvas(
     const overlay = await renderSlotOverlay(
       preset,
       opts.slotStyle ?? "vanilla",
-      opts.slotOpacity ?? 1
+      opts.slotOpacity ?? 1,
+      opts.excludeSlots ?? []
     );
     out = await sharp(out)
       .composite([{ input: overlay, top: 0, left: 0 }])
