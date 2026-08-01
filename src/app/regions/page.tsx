@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { GUI_PRESETS, findPreset } from "@/lib/mc/canvas";
-import { REGION_PALETTE, unpaintedSlots, type Region } from "@/lib/mc/regions";
+import {
+  REGION_PALETTE,
+  unpaintedSlots,
+  type MaskMode,
+  type Region,
+} from "@/lib/mc/regions";
 import { ART_STYLES, type ArtStyle } from "@/lib/ai/styles";
 import { PACK_FORMATS, vanillaTexturePath } from "@/lib/pack/build";
 import { SlotPainter } from "@/components/SlotPainter";
@@ -31,9 +36,11 @@ export default function RegionsPage() {
   const [artStyle, setArtStyle] = useState<ArtStyle>("pixel_ui");
   const [colors, setColors] = useState(96);
   const [punch, setPunch] = useState(130);
-  const [drawSlots, setDrawSlots] = useState(true);
+  // 기본은 칸을 안 그린다. 그림이 칸 위를 덮는 게 이 에디터의 전제다.
+  const [drawSlots, setDrawSlots] = useState(false);
   const [slotOpacity, setSlotOpacity] = useState(100);
   const [keepSlotsOnRegions, setKeepSlotsOnRegions] = useState(false);
+  const [maskMode, setMaskMode] = useState<MaskMode>("box");
 
   const [providers, setProviders] = useState<string[]>([]);
   const [provider, setProvider] = useState("");
@@ -89,6 +96,7 @@ export default function RegionsPage() {
           drawSlots,
           slotOpacity: slotOpacity / 100,
           keepSlotsOnRegions,
+          maskMode,
         }),
       });
       const data = await res.json();
@@ -300,14 +308,46 @@ export default function RegionsPage() {
             <Slider label={`팔레트 ${colors}색`} min={16} max={256} step={4} value={colors} onChange={setColors} />
             <Slider label={`채도·대비 ${punch}%`} min={100} max={200} step={5} value={punch} onChange={setPunch} />
 
-            <label className="flex items-center gap-2 text-sm text-zinc-400">
+            <div>
+              <label className="mb-1 block text-[11px] uppercase tracking-wide text-zinc-500">
+                영역 모양
+              </label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(
+                  [
+                    ["box", "통짜", "칸 이음매 없이 한 장으로"],
+                    ["cells", "칸 단위", "칠한 칸 모양대로 오려냄"],
+                  ] as [MaskMode, string, string][]
+                ).map(([id, label, hint]) => (
+                  <button
+                    key={id}
+                    onClick={() => setMaskMode(id)}
+                    title={hint}
+                    className={`rounded-md px-2 py-1.5 text-xs ring-1 transition ${
+                      maskMode === id
+                        ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/40"
+                        : "bg-white/5 text-zinc-400 ring-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="flex items-start gap-2 text-sm text-zinc-400">
               <input
                 type="checkbox"
                 checked={drawSlots}
                 onChange={(e) => setDrawSlots(e.target.checked)}
-                className="accent-emerald-500"
+                className="mt-1 accent-emerald-500"
               />
-              슬롯 우물 굽기
+              <span>
+                슬롯 우물 굽기
+                <span className="mt-0.5 block text-[11px] text-zinc-600">
+                  기본은 끔. 그림이 칸 위를 덮습니다
+                </span>
+              </span>
             </label>
             {drawSlots && (
               <>

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { findPreset } from "@/lib/mc/canvas";
-import { boundingBox, regionRects, type Region } from "@/lib/mc/regions";
+import { boundingBox, regionRects, type MaskMode, type Region } from "@/lib/mc/regions";
 import {
   buildFontTexture,
   finalizeGuiCanvas,
@@ -23,11 +23,13 @@ type Body = {
   provider?: ProviderId;
   refine?: boolean;
   artStyle?: ArtStyle;
+  /** 슬롯 우물을 텍스처에 구울지. 기본 false — 그림이 칸을 덮는다. */
   drawSlots?: boolean;
   slotStyle?: "vanilla" | "dark" | "light";
   slotOpacity?: number;
   /** 칠한 칸에도 우물을 덧그릴지. 기본은 안 그린다(영역 그림이 우물을 대신). */
   keepSlotsOnRegions?: boolean;
+  maskMode?: MaskMode;
 };
 
 const dataUrl = (b: Buffer) => `data:image/png;base64,${b.toString("base64")}`;
@@ -92,13 +94,13 @@ export async function POST(req: Request) {
       if (gen.note) notes.push(`${region.label}: ${gen.note}`);
 
       const art = await buildFontTexture(gen.png, box.w, box.h, pixelOpts);
-      canvas = await compositeRegion(
-        canvas,
-        art,
-        { width: W, height: H },
-        box,
-        regionRects(preset, region.slots)
-      );
+      // 기본은 통사각형. 칸 단위로 오려내면 칸 구분선이 그대로 드러난다.
+      const mask =
+        (body.maskMode ?? "box") === "cells"
+          ? regionRects(preset, region.slots)
+          : [box];
+
+      canvas = await compositeRegion(canvas, art, { width: W, height: H }, box, mask);
 
       used.push({
         id: region.id,
@@ -114,7 +116,7 @@ export async function POST(req: Request) {
       r.prompt?.trim() ? r.slots : []
     );
     const png = await finalizeGuiCanvas(canvas, preset, {
-      drawSlots: body.drawSlots,
+      drawSlots: body.drawSlots === true,
       slotStyle: body.slotStyle,
       slotOpacity: body.slotOpacity,
       excludeSlots: body.keepSlotsOnRegions ? [] : painted,

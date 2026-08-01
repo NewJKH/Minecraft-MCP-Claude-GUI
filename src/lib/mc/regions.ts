@@ -73,6 +73,13 @@ export function boundingBox(preset: GuiPreset, indices: number[]): Box | null {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
+/**
+ * 마스크 방식.
+ * - "box"   : 칠한 칸들을 감싸는 통사각형. 칸 사이 이음매가 없어 그림이 이어진다. (기본)
+ * - "cells" : 칠한 칸 하나하나만. 격자 모양대로 오려낸다.
+ */
+export type MaskMode = "box" | "cells";
+
 /** 영역이 실제로 덮는 칸들의 사각형 목록 (마스크용) */
 export function regionRects(preset: GuiPreset, indices: number[]): Box[] {
   const rects = allSlotRects(preset);
