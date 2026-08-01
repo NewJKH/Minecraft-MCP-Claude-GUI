@@ -14,8 +14,11 @@ import {
   SUB_PANEL_STYLES,
   expandToPanel,
   renderSvgLayer,
+  buttonTilesSvg,
+  scrollBarSvg,
   shelfBoardsSvg,
   slotMarkersSvg,
+  titleBarSvg,
   subPanelFillSvg,
   subPanelFrameSvg,
   vanillaPanelSvg,
@@ -42,6 +45,13 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 type FramedRegion = Region & {
+  /**
+   * 이 영역을 무엇으로 그릴지.
+   * - panel   : 재질 채운 서브패널 (기본)
+   * - buttons : 칸마다 눌리는 버튼 타일
+   * - title   : 글자가 앉을 타이틀 바
+   */
+  render?: "panel" | "buttons" | "title";
   /** SUB_PANEL_STYLES 키 */
   panelStyle?: string;
   markers?: MarkerStyle;
@@ -73,6 +83,15 @@ type Body = {
   useAiFill?: boolean;
   /** 플레이어 인벤토리 슬롯을 바닐라 우물로 그릴지 */
   drawPlayerInventory?: boolean;
+  /** 세로 스크롤바. GUI 좌표로 직접 지정한다. */
+  scrollBar?: {
+    x: number;
+    y: number;
+    w?: number;
+    h: number;
+    panelStyle?: string;
+    thumbAt?: number;
+  };
   namespace?: string;
   assetName?: string;
   glyphTop?: number;
@@ -132,6 +151,27 @@ export async function POST(req: Request) {
 
       const panel = expandToPanel(slotBox);
       const style = SUB_PANEL_STYLES[region.panelStyle ?? "purple"] ?? SUB_PANEL_STYLES.purple;
+      const wells = region.slots.map((i) => rects[i]).filter(Boolean).map(wellRect);
+      const mode = region.render ?? "panel";
+
+      // 버튼 줄 / 타이틀 바는 재질도 액자도 필요 없다. 통째로 그리고 넘어간다.
+      if (mode !== "panel") {
+        const layer = await renderSvgLayer(W, H, [
+          mode === "buttons"
+            ? buttonTilesSvg(wells, style)
+            : titleBarSvg(panel, style),
+        ]);
+        canvas = await sharp(canvas)
+          .composite([{ input: layer, top: 0, left: 0 }])
+          .png()
+          .toBuffer();
+        layers.push({
+          label: region.label,
+          slots: region.slots.length,
+          provider: mode,
+        });
+        continue;
+      }
 
       // 2-a) 안쪽 채움. 절차적 재질이 지정돼 있으면 그걸 우선한다.
       if (region.material) {
@@ -181,16 +221,34 @@ export async function POST(req: Request) {
       }
 
       // 2-b) 선반 널판 → 액자 → 슬롯 마커 순. 전부 재질 위에 얹혀야 선이 산다.
-      const wells = region.slots.map((i) => rects[i]).filter(Boolean).map(wellRect);
       const boardColor = shelfColor(region.materialColor ?? "#6b4423");
 
       const overlay = await renderSvgLayer(W, H, [
         region.shelves ? shelfBoardsSvg(wells, panel, boardColor) : "",
         subPanelFrameSvg(panel, style),
-        slotMarkersSvg(wells, region.markers ?? "dotted"),
+        // 기본은 마커 없음. 그림 위에 격자가 얹히면 칸 구분이 드러난다.
+        slotMarkersSvg(wells, region.markers ?? "none"),
       ]);
       canvas = await sharp(canvas)
         .composite([{ input: overlay, top: 0, left: 0 }])
+        .png()
+        .toBuffer();
+    }
+
+    // 2-c) 스크롤바
+    if (body.scrollBar) {
+      const sb = body.scrollBar;
+      const style =
+        SUB_PANEL_STYLES[sb.panelStyle ?? "slate"] ?? SUB_PANEL_STYLES.slate;
+      const layer = await renderSvgLayer(W, H, [
+        scrollBarSvg(
+          { x: sb.x, y: sb.y, w: sb.w ?? 8, h: sb.h },
+          style,
+          sb.thumbAt ?? 0.15
+        ),
+      ]);
+      canvas = await sharp(canvas)
+        .composite([{ input: layer, top: 0, left: 0 }])
         .png()
         .toBuffer();
     }

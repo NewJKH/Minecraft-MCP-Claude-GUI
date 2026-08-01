@@ -144,6 +144,82 @@ export function shelfBoardsSvg(
     .join("");
 }
 
+/**
+ * 타이틀 바. 레퍼런스(TELEPORT HUB / AUCTION / BOOST SHOP)가 전부 같은 구조다:
+ * 액자를 두른 바 안에, 글자가 앉을 어두운 명판이 한 겹 더 들어간다.
+ */
+export function titleBarSvg(box: Box, style: SubPanelStyle): string {
+  const inset = 4;
+  const plaque: Box = {
+    x: box.x + inset,
+    y: box.y + inset,
+    w: box.w - inset * 2,
+    h: box.h - inset * 2,
+  };
+
+  return [
+    subPanelFillSvg(box, style),
+    subPanelFrameSvg(box, style),
+    // 글자가 앉을 명판 (안쪽으로 파인 느낌)
+    `<rect x="${plaque.x}" y="${plaque.y}" width="${plaque.w}" height="${plaque.h}" fill="${style.inner}"/>`,
+    `<rect x="${plaque.x}" y="${plaque.y}" width="${plaque.w}" height="1" fill="${VANILLA.dark}" opacity="0.6"/>`,
+    `<rect x="${plaque.x}" y="${plaque.y + plaque.h - 1}" width="${plaque.w}" height="1" fill="${style.outer}" opacity="0.5"/>`,
+  ].join("");
+}
+
+/**
+ * 버튼 타일 한 칸. 슬롯 자리에 눌리는 버튼처럼 보이게 그린다.
+ * 레퍼런스 AUCTION 하단 아이콘 줄, MAIN MENU 타일이 이 모양이다.
+ */
+export function buttonTileSvg(r: Box, style: SubPanelStyle): string {
+  const inner = { x: r.x + 3, y: r.y + 3, w: r.w - 6, h: r.h - 6 };
+  return [
+    // 바깥 액자
+    `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="${style.fill}"/>`,
+    `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="none" stroke="${style.inner}" stroke-width="1"/>`,
+    `<rect x="${r.x + 1}" y="${r.y + 1}" width="${r.w - 2}" height="${r.h - 2}" fill="none" stroke="${style.outer}" stroke-width="1"/>`,
+    // 안쪽 아이콘 자리 (파인 느낌)
+    `<rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="${inner.h}" fill="${style.inner}"/>`,
+    `<rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="1" fill="#000000" opacity="0.35"/>`,
+    `<rect x="${inner.x}" y="${inner.y}" width="1" height="${inner.h}" fill="#000000" opacity="0.35"/>`,
+    `<rect x="${inner.x + 1}" y="${inner.y + inner.h - 1}" width="${inner.w - 1}" height="1" fill="${style.outer}" opacity="0.55"/>`,
+    `<rect x="${inner.x + inner.w - 1}" y="${inner.y + 1}" width="1" height="${inner.h - 1}" fill="${style.outer}" opacity="0.55"/>`,
+  ].join("");
+}
+
+export function buttonTilesSvg(rects: Box[], style: SubPanelStyle): string {
+  return rects.map((r) => buttonTileSvg(r, style)).join("");
+}
+
+/**
+ * 세로 스크롤바. 레퍼런스 BOSS-DUNGEON 좌측에 있는 그것.
+ * 위/아래 삼각 버튼 + 가운데 손잡이.
+ */
+export function scrollBarSvg(box: Box, style: SubPanelStyle, thumbAt = 0.15): string {
+  const w = box.w;
+  const arrow = w;
+  const thumbH = Math.max(8, Math.round(box.h * 0.18));
+  const trackTop = box.y + arrow;
+  const trackH = box.h - arrow * 2;
+  const thumbY = trackTop + Math.round((trackH - thumbH) * thumbAt);
+
+  const tri = (cy: number, up: boolean) => {
+    const half = Math.floor(w / 2) - 1;
+    const dir = up ? -1 : 1;
+    return `<polygon points="${box.x + w / 2},${cy + dir * half} ${box.x + 1},${cy - dir * half} ${box.x + w - 1},${cy - dir * half}"
+      fill="${style.outer}"/>`;
+  };
+
+  return [
+    `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="${style.inner}"/>`,
+    `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="none" stroke="${style.outer}" stroke-width="1"/>`,
+    tri(box.y + arrow / 2, true),
+    tri(box.y + box.h - arrow / 2, false),
+    `<rect x="${box.x + 1}" y="${thumbY}" width="${w - 2}" height="${thumbH}" fill="${style.fill}"/>`,
+    `<rect x="${box.x + 1}" y="${thumbY}" width="${w - 2}" height="1" fill="${style.outer}"/>`,
+  ].join("");
+}
+
 /** 여러 svg 조각을 한 장으로 렌더 */
 export async function renderSvgLayer(
   width: number,
