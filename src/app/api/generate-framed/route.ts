@@ -10,7 +10,12 @@ import {
   type Box,
   type Region,
 } from "@/lib/mc/regions";
-import { buildFontTexture } from "@/lib/image/pixelize";
+import {
+  autoRemoveBackground,
+  buildFontTexture,
+  hardenAlpha,
+  removeBackgroundFlood,
+} from "@/lib/image/pixelize";
 import { compositeRegion } from "@/lib/image/compose";
 import {
   SUB_PANEL_STYLES,
@@ -124,6 +129,23 @@ type Body = {
   useAiFill?: boolean;
   /** 플레이어 인벤토리 슬롯을 바닐라 우물로 그릴지 */
   drawPlayerInventory?: boolean;
+  /**
+   * AI 스프라이트. 캔버스 좌표에 직접 얹는다.
+   *
+   * 확산 모델은 투명 배경을 못 뱉으므로, 마젠타 배경을 그리게 하고
+   * 그 색을 키로 빼서 투명하게 만든다.
+   */
+  sprites?: {
+    prompt: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    seed?: number;
+    /** 키로 뺄 색. 기본 마젠타 */
+    keyColor?: string;
+    tolerance?: number;
+  }[];
   /** 세로 스크롤바. GUI 좌표로 직접 지정한다. */
   scrollBar?: {
     x: number;
@@ -158,6 +180,21 @@ function materialPrompt(subject: string): string {
     `${subject},`,
     "seamless flat material filling the entire frame, straight-on view, even lighting,",
     "no border, no frame, no panel edges, no vignette, no text",
+  ].join(" ");
+}
+
+/**
+ * 스프라이트 프롬프트.
+ * 배경색을 강하게 못박아야 키가 깨끗하게 빠진다.
+ */
+function spritePrompt(subject: string): string {
+  return [
+    "pixel art sprite, 16-bit game character art, thick dark outline,",
+    "flat cel shaded, limited palette, visible square pixels,",
+    `${subject},`,
+    "front view, full body, centered, isolated on a plain flat empty background,",
+    "the background is one single uniform color, nothing else in frame,",
+    "no shadow, no ground, no floor, no scenery, no text",
   ].join(" ");
 }
 
@@ -464,6 +501,49 @@ export async function POST(req: Request) {
 
       canvas = await over(canvas, await renderSvgLayer(CW, CH, parts));
       layers.push({ label: "차양", slots: 0, provider: "awning" });
+    }
+
+    // 2-e) AI 스프라이트. 마젠타 배경을 키로 빼서 얹는다.
+    for (const sp of body.sprites ?? []) {
+      if (!sp.prompt?.trim()) continue;
+
+      let prompt = spritePrompt(sp.prompt);
+      if (body.refine) prompt = await refineWithClaude(prompt);
+
+      const gen = await generateImage(
+        { prompt, width: sp.w * 8, height: sp.h * 8, seed: sp.seed },
+        provider
+      );
+      if (gen.provider === "procedural") {
+        notes.push(`스프라이트 "${sp.prompt}": 이미지 모델이 없어 건너뜁니다`);
+        continue;
+      }
+      if (gen.note) notes.push(`스프라이트: ${gen.note}`);
+
+      // 먼저 스프라이트 크기로 줄이고, 그 다음 테두리에서 배경을 벗긴다.
+      // 작은 이미지에서 flood fill 하는 게 빠르고 결과도 깔끔하다.
+      const small = await buildFontTexture(gen.png, sp.w, sp.h, {
+        pixelBlock: 1,
+        colors: body.colors,
+        punch: body.punch,
+      });
+      const cut = sp.tolerance
+        ? { png: await removeBackgroundFlood(small, sp.tolerance), ratio: -1 }
+        : await autoRemoveBackground(small);
+      if (cut.ratio >= 0 && (cut.ratio < 0.15 || cut.ratio > 0.85)) {
+        notes.push(
+          `스프라이트 "${sp.prompt.slice(0, 16)}": 배경 분리가 잘 안 됐습니다 (남은 그림 ${Math.round(cut.ratio * 100)}%)`
+        );
+      }
+      // 축소하며 번진 가장자리를 잘라내 픽셀 경계를 세운다
+      const art = await hardenAlpha(cut.png, 140);
+
+      canvas = await sharp(canvas)
+        .composite([{ input: art, left: Math.round(sp.x), top: Math.round(sp.y) }])
+        .png()
+        .toBuffer();
+
+      layers.push({ label: `스프라이트 ${sp.prompt.slice(0, 12)}`, slots: 0, provider: gen.provider });
     }
 
     // 3) 플레이어 인벤토리는 바닐라 그대로

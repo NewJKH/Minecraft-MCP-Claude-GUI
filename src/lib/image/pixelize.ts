@@ -106,6 +106,131 @@ export async function pixelize(
   return pipeline.toBuffer();
 }
 
+/**
+ * 알파를 0 아니면 255로 만든다.
+ *
+ * 색키로 투명하게 만든 뒤 축소하면 가장자리가 반투명하게 번져
+ * 픽셀아트가 아니라 흐릿한 스티커처럼 보인다. 임계값으로 잘라낸다.
+ */
+export async function hardenAlpha(input: Buffer, threshold = 128): Promise<Buffer> {
+  const { data, info } = await sharp(input)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  for (let i = 3; i < data.length; i += info.channels) {
+    data[i] = data[i] < threshold ? 0 : 255;
+  }
+
+  return sharp(data, {
+    raw: { width: info.width, height: info.height, channels: info.channels as 4 },
+  })
+    .png()
+    .toBuffer();
+}
+
+/**
+ * 테두리에서 시작하는 flood fill로 배경을 벗긴다.
+ *
+ * 확산 모델은 "마젠타 배경"이라고 못박아도 회색 그라데이션을 그려버린다.
+ * 그래서 특정 색을 키로 빼는 대신, 가장자리에서 안쪽으로 번져 들어가며
+ * '이웃과 비슷한 색'을 계속 지운다. 그라데이션 배경도 먹고,
+ * 스프라이트의 진한 외곽선에서 멈춘다.
+ *
+ * @param tolerance 이웃 픽셀과의 색 거리 허용치. 크면 스프라이트까지 파먹는다.
+ */
+export async function removeBackgroundFlood(
+  input: Buffer,
+  tolerance = 30
+): Promise<Buffer> {
+  const { data, info } = await sharp(input)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width: w, height: h, channels: ch } = info;
+  const at = (x: number, y: number) => (y * w + x) * ch;
+  const visited = new Uint8Array(w * h);
+  const tol2 = tolerance * tolerance;
+
+  const stack: [number, number][] = [];
+  for (let x = 0; x < w; x++) {
+    stack.push([x, 0], [x, h - 1]);
+  }
+  for (let y = 0; y < h; y++) {
+    stack.push([0, y], [w - 1, y]);
+  }
+
+  while (stack.length) {
+    const [x, y] = stack.pop()!;
+    if (x < 0 || y < 0 || x >= w || y >= h) continue;
+    const vi = y * w + x;
+    if (visited[vi]) continue;
+    visited[vi] = 1;
+
+    const i = at(x, y);
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    data[i + 3] = 0;
+
+    for (const [nx, ny] of [
+      [x + 1, y],
+      [x - 1, y],
+      [x, y + 1],
+      [x, y - 1],
+    ] as [number, number][]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      if (visited[ny * w + nx]) continue;
+      const j = at(nx, ny);
+      const dr = data[j] - r;
+      const dg = data[j + 1] - g;
+      const db = data[j + 2] - b;
+      if (dr * dr + dg * dg + db * db <= tol2) stack.push([nx, ny]);
+    }
+  }
+
+  return sharp(data, { raw: { width: w, height: h, channels: ch as 4 } })
+    .png()
+    .toBuffer();
+}
+
+/** 불투명 픽셀 비율 */
+async function opaqueRatio(buf: Buffer): Promise<number> {
+  const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({
+    resolveWithObject: true,
+  });
+  let n = 0;
+  for (let i = 3; i < data.length; i += info.channels) if (data[i] > 128) n++;
+  return n / (info.width * info.height);
+}
+
+/**
+ * 배경 제거 톨러런스를 자동으로 고른다.
+ *
+ * 너무 낮으면 배경이 테두리처럼 남고, 너무 높으면 스프라이트를 파먹는다.
+ * 여러 값으로 돌려보고 '남은 그림이 화면의 20~70%'인 결과를 고른다.
+ * 그 범위에 드는 게 없으면 40%에 가장 가까운 걸 쓴다.
+ */
+export async function autoRemoveBackground(
+  input: Buffer,
+  candidates = [14, 20, 26, 32, 40]
+): Promise<{ png: Buffer; tolerance: number; ratio: number }> {
+  let best: { png: Buffer; tolerance: number; ratio: number } | null = null;
+
+  for (const t of candidates) {
+    const png = await removeBackgroundFlood(input, t);
+    const ratio = await opaqueRatio(png);
+
+    if (ratio >= 0.2 && ratio <= 0.7) return { png, tolerance: t, ratio };
+    if (!best || Math.abs(ratio - 0.4) < Math.abs(best.ratio - 0.4)) {
+      best = { png, tolerance: t, ratio };
+    }
+  }
+
+  return best!;
+}
+
 /** nearest로 확대만 (미리보기용). */
 export async function upscaleNearest(
   input: Buffer,
