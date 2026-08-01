@@ -17,8 +17,11 @@ import {
   renderSvgLayer,
   awningSvg,
   buttonTilesSvg,
+  counterSvg,
   scrollBarSvg,
+  sidePostsSvg,
   signPlaqueSvg,
+  wallDepthSvg,
   shelfBoardsSvg,
   slotMarkersSvg,
   titleBarSvg,
@@ -54,7 +57,7 @@ type FramedRegion = Region & {
    * - buttons : 칸마다 눌리는 버튼 타일
    * - title   : 글자가 앉을 타이틀 바
    */
-  render?: "panel" | "buttons" | "title";
+  render?: "panel" | "buttons" | "title" | "shelf" | "counter";
   /** SUB_PANEL_STYLES 키 */
   panelStyle?: string;
   markers?: MarkerStyle;
@@ -64,6 +67,8 @@ type FramedRegion = Region & {
   seed?: number;
   /** 슬롯 줄마다 아래에 널판을 깐다 */
   shelves?: boolean;
+  /** counter 모드에서 상판 나무 색 */
+  woodColor?: string;
 };
 
 /** 재질 색에서 널판 3톤을 뽑는다 */
@@ -97,6 +102,9 @@ type Body = {
     /** 차양 아래에 매달 간판 (폭) */
     signWidth?: number;
     signStyle?: string;
+    /** 양옆 기둥 */
+    posts?: boolean;
+    postColor?: string;
   };
   /**
    * 통짜 프레임. 지정하면 컨테이너 슬롯 전체를 감싸는 액자를 하나만 그리고,
@@ -266,6 +274,46 @@ export async function POST(req: Request) {
       const wells = region.slots.map((i) => rects[i]).filter(Boolean).map(wellRect);
       const mode = region.render ?? "panel";
 
+      // 선반: 벽 재질은 프레임 것을 쓰고, 널판만 얹는다. 슬롯 네모는 안 그린다.
+      // 아이템이 널판 위에 얹히는 게 상점처럼 보이는 핵심이다.
+      if (mode === "shelf") {
+        const boardColor = shelfColor(region.materialColor ?? "#7a4f2a");
+        canvas = await over(
+          canvas,
+          await guiLayer([
+            wallDepthSvg(panel, 4),
+            shelfBoardsSvg(wells, panel, boardColor),
+          ])
+        );
+        layers.push({ label: region.label, slots: region.slots.length, provider: "shelf" });
+        continue;
+      }
+
+      // 카운터: 천을 두르고 그 위에 상판을 올린다.
+      if (mode === "counter") {
+        const clothColor = region.materialColor ?? "#8e2436";
+        const top = shelfColor(region.woodColor ?? "#7a4f2a");
+        const cloth = await renderMaterial(
+          "fabric",
+          panel.w,
+          panel.h,
+          clothColor,
+          region.seed ?? 1
+        );
+        canvas = await compositeRegion(canvas, cloth, { width: CW, height: CH }, sh(panel), [
+          sh(panel),
+        ]);
+        canvas = await over(
+          canvas,
+          await guiLayer([
+            counterSvg({ x: panel.x, y: panel.y, w: panel.w, h: 5 }, top),
+            `<rect x="${panel.x}" y="${panel.y + 5}" width="${panel.w}" height="3" fill="#000000" opacity="0.3"/>`,
+          ])
+        );
+        layers.push({ label: region.label, slots: region.slots.length, provider: "counter" });
+        continue;
+      }
+
       // 버튼 줄 / 타이틀 바는 재질도 액자도 필요 없다. 통째로 그리고 넘어간다.
       if (mode !== "panel") {
         canvas = await over(
@@ -404,6 +452,13 @@ export async function POST(req: Request) {
             },
             sStyle
           )
+        );
+      }
+
+      // 양옆 기둥 — 건물처럼 보이게
+      if (a.posts !== false) {
+        parts.unshift(
+          sidePostsSvg(sh(frameBox), shelfColor(a.postColor ?? "#6b4423"), 6)
         );
       }
 

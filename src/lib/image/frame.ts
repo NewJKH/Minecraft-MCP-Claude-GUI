@@ -148,7 +148,7 @@ export function shelfBoardsSvg(
   rects: Box[],
   bounds: Box,
   color: { face: string; light: string; dark: string },
-  thickness = 6
+  thickness = 7
 ): string {
   const rows = [...new Set(rects.map((r) => r.y))].sort((a, b) => a - b);
   const x = bounds.x + 2;
@@ -158,12 +158,20 @@ export function shelfBoardsSvg(
     .map((rowY) => {
       // 널판 윗면이 슬롯 바닥에 닿게
       const y = rowY + 18;
+      const topH = 2; // 위에서 내려다보이는 상판
       return [
-        `<rect x="${x}" y="${y}" width="${w}" height="${thickness}" fill="${color.face}"/>`,
-        `<rect x="${x}" y="${y}" width="${w}" height="1" fill="${color.light}"/>`,
+        // 상판 — 빛을 받는 면
+        `<rect x="${x}" y="${y}" width="${w}" height="${topH}" fill="${color.light}"/>`,
+        // 앞면 — 어두운 몸통
+        `<rect x="${x}" y="${y + topH}" width="${w}" height="${thickness - topH}" fill="${color.face}"/>`,
+        // 앞면 아래 모서리
         `<rect x="${x}" y="${y + thickness - 1}" width="${w}" height="1" fill="${color.dark}"/>`,
-        // 널판 아래 그림자
-        `<rect x="${x}" y="${y + thickness}" width="${w}" height="2" fill="${color.dark}" opacity="0.45"/>`,
+        // 양 끝 마구리 — 두께가 보이게
+        `<rect x="${x}" y="${y}" width="1" height="${thickness}" fill="${color.dark}"/>`,
+        `<rect x="${x + w - 1}" y="${y}" width="1" height="${thickness}" fill="${color.dark}"/>`,
+        // 널판이 벽에 드리우는 그림자
+        `<rect x="${x}" y="${y + thickness}" width="${w}" height="3" fill="#000000" opacity="0.32"/>`,
+        `<rect x="${x}" y="${y + thickness + 3}" width="${w}" height="2" fill="#000000" opacity="0.16"/>`,
       ].join("");
     })
     .join("");
@@ -287,11 +295,52 @@ export function awningSvg(
 
   return [
     ...parts,
+    // 줄무늬마다 좌우 음영 — 천이 접힌 것처럼 보이게
+    ...Array.from({ length: stripes }, (_, i) => {
+      const x = box.x + i * sw;
+      return (
+        `<rect x="${x}" y="${box.y}" width="1" height="${box.h - scallop}" fill="#000000" opacity="0.18"/>` +
+        `<rect x="${x + sw - 1}" y="${box.y}" width="1" height="${box.h - scallop}" fill="#ffffff" opacity="0.12"/>`
+      );
+    }),
     // 지붕 위쪽 하이라이트
     `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="2" fill="#ffffff" opacity="0.35"/>`,
-    // 차양 아래 그림자
-    `<rect x="${box.x}" y="${box.y + box.h - scallop}" width="${box.w}" height="1" fill="${opts.shadow ?? "#000000"}" opacity="0.25"/>`,
+    // 처마 밑면 — 이게 있어야 지붕이 두께를 가진 것처럼 보인다
+    `<rect x="${box.x + 3}" y="${box.y + box.h - scallop}" width="${box.w - 6}" height="3" fill="${opts.shadow ?? "#000000"}" opacity="0.4"/>`,
   ].join("");
+}
+
+/**
+ * 벽 안쪽 그림자. 위와 양옆이 어두워지면 평면이 아니라 '안쪽'으로 읽힌다.
+ * 그라데이션 대신 단계별 사각형으로 찍어 픽셀아트 결을 지킨다.
+ */
+export function wallDepthSvg(box: Box, steps = 4): string {
+  const parts: string[] = [];
+  for (let i = 0; i < steps; i++) {
+    const o = (0.3 * (steps - i)) / steps;
+    const t = i * 2;
+    parts.push(
+      `<rect x="${box.x}" y="${box.y + t}" width="${box.w}" height="2" fill="#000000" opacity="${o.toFixed(3)}"/>`,
+      `<rect x="${box.x + t}" y="${box.y}" width="2" height="${box.h}" fill="#000000" opacity="${(o * 0.7).toFixed(3)}"/>`,
+      `<rect x="${box.x + box.w - t - 2}" y="${box.y}" width="2" height="${box.h}" fill="#000000" opacity="${(o * 0.7).toFixed(3)}"/>`
+    );
+  }
+  return parts.join("");
+}
+
+/** 상점 양옆 기둥. 건물처럼 보이게 하는 값싼 트릭. */
+export function sidePostsSvg(
+  box: Box,
+  color: { face: string; light: string; dark: string },
+  width = 7
+): string {
+  const post = (x: number) =>
+    [
+      `<rect x="${x}" y="${box.y}" width="${width}" height="${box.h}" fill="${color.face}"/>`,
+      `<rect x="${x}" y="${box.y}" width="1" height="${box.h}" fill="${color.light}"/>`,
+      `<rect x="${x + width - 1}" y="${box.y}" width="1" height="${box.h}" fill="${color.dark}"/>`,
+    ].join("");
+  return post(box.x) + post(box.x + box.w - width);
 }
 
 /** 차양에 매달린 간판. 글자는 나중에 폰트로 얹는다. */
