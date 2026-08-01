@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { GUI_PRESETS, ITEM_SIZES, findPreset } from "@/lib/mc/canvas";
 import { ART_STYLES, styleDefaults, type ArtStyle } from "@/lib/ai/styles";
 import { PACK_FORMATS, vanillaTexturePath, namespacedItemPath } from "@/lib/pack/build";
@@ -197,12 +198,20 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#0b0b0e] text-zinc-200">
-      <header className="border-b border-white/10 px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">Minecraft GUI Studio</h1>
-        <p className="mt-1 text-xs text-zinc-500">
-          AI가 텍스처를 뽑고, GUI는 <span className="text-emerald-400">항상 256×256</span> 규격으로
-          강제 빌드합니다.
-        </p>
+      <header className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight">Minecraft GUI Studio</h1>
+          <p className="mt-1 text-xs text-zinc-500">
+            AI가 텍스처를 뽑고, GUI는 <span className="text-emerald-400">항상 256×256</span> 규격으로
+            강제 빌드합니다.
+          </p>
+        </div>
+        <Link
+          href="/regions"
+          className="text-xs text-zinc-400 underline hover:text-zinc-200"
+        >
+          영역 에디터
+        </Link>
       </header>
 
       <div className="grid gap-6 p-6 lg:grid-cols-[380px_1fr]">

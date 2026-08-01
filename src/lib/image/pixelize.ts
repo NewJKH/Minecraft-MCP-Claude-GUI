@@ -170,6 +170,22 @@ export async function buildGuiTexture(
     .png()
     .toBuffer();
 
+  return finalizeGuiCanvas(art, preset, opts);
+}
+
+/**
+ * 이미 GUI 실크기(guiWidth x guiHeight)로 만들어진 그림을 마무리한다.
+ * 슬롯 우물을 얹고, 256x256 투명 캔버스 좌상단에 붙인다.
+ *
+ * 영역 합성 경로처럼 그림을 여러 단계로 조립한 뒤에도 이 마무리는 동일하다.
+ */
+export async function finalizeGuiCanvas(
+  art: Buffer,
+  preset: GuiPreset,
+  opts: { drawSlots?: boolean; slotStyle?: SlotStyle; slotOpacity?: number } = {}
+): Promise<Buffer> {
+  let out = art;
+
   // 슬롯 우물은 AI가 못 맞추므로 정확한 좌표로 직접 박는다
   if (opts.drawSlots !== false) {
     const overlay = await renderSlotOverlay(
@@ -177,7 +193,7 @@ export async function buildGuiTexture(
       opts.slotStyle ?? "vanilla",
       opts.slotOpacity ?? 1
     );
-    art = await sharp(art)
+    out = await sharp(out)
       .composite([{ input: overlay, top: 0, left: 0 }])
       .png()
       .toBuffer();
@@ -192,7 +208,7 @@ export async function buildGuiTexture(
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     },
   })
-    .composite([{ input: art, top: 0, left: 0 }])
+    .composite([{ input: out, top: 0, left: 0 }])
     .png()
     .toBuffer();
 }
