@@ -3,9 +3,11 @@ import sharp from "sharp";
 import { findPreset } from "@/lib/mc/canvas";
 import {
   allSlotRects,
+  boundingBox,
   containerSlotCount,
   layoutPanels,
   wellRect,
+  type Box,
   type Region,
 } from "@/lib/mc/regions";
 import { buildFontTexture } from "@/lib/image/pixelize";
@@ -77,6 +79,19 @@ function shelfColor(hex: string) {
 
 type Body = {
   presetId?: string;
+  /**
+   * 통짜 프레임. 지정하면 컨테이너 슬롯 전체를 감싸는 액자를 하나만 그리고,
+   * 안쪽 영역들은 자기 액자 없이 재질·슬롯만 얹는다.
+   * 서브패널이 여러 개 떠 있는 것보다 훨씬 통일감이 있다.
+   */
+  frame?: {
+    panelStyle?: string;
+    material?: MaterialKind;
+    materialColor?: string;
+    seed?: number;
+    /** 슬롯 바깥 여백 */
+    padding?: number;
+  };
   regions: FramedRegion[];
   /** 서브패널 안쪽 재질을 AI로 채울지. 끄면 단색. */
   useAiFill?: boolean;
@@ -141,6 +156,60 @@ export async function POST(req: Request) {
     // 1) 바닐라 회색 베벨 패널
     let canvas = await renderSvgLayer(W, H, [vanillaPanelSvg(W, H)]);
 
+    // 1-b) 통짜 프레임. 컨테이너 슬롯 전체를 한 액자로 감싼다.
+    const unified = body.frame;
+    let frameBox: Box | null = null;
+
+    if (unified) {
+      const containerIdx = Array.from({ length: containerCount }, (_, i) => i);
+      const inner = boundingBox(preset, containerIdx);
+      if (inner) {
+        const pad = unified.padding ?? 6;
+        frameBox = {
+          x: Math.max(1, inner.x - pad),
+          y: Math.max(1, inner.y - pad),
+          w: Math.min(W - 2, inner.w + pad * 2),
+          h: Math.min(H - 2, inner.h + pad * 2),
+        };
+
+        const fStyle =
+          SUB_PANEL_STYLES[unified.panelStyle ?? "slate"] ?? SUB_PANEL_STYLES.slate;
+
+        if (unified.material) {
+          const mat = await renderMaterial(
+            unified.material,
+            frameBox.w,
+            frameBox.h,
+            unified.materialColor ??
+              MATERIALS.find((m) => m.id === unified.material)?.defaultColor ??
+              "#4a4a4e",
+            unified.seed ?? 1
+          );
+          canvas = await compositeRegion(
+            canvas,
+            mat,
+            { width: W, height: H },
+            frameBox,
+            [frameBox]
+          );
+        } else {
+          const fill = await renderSvgLayer(W, H, [subPanelFillSvg(frameBox, fStyle)]);
+          canvas = await sharp(canvas)
+            .composite([{ input: fill, top: 0, left: 0 }])
+            .png()
+            .toBuffer();
+        }
+
+        const border = await renderSvgLayer(W, H, [subPanelFrameSvg(frameBox, fStyle, 4)]);
+        canvas = await sharp(canvas)
+          .composite([{ input: border, top: 0, left: 0 }])
+          .png()
+          .toBuffer();
+
+        layers.push({ label: "프레임", slots: 0, provider: unified.material ?? "flat" });
+      }
+    }
+
     // 2) 영역마다: 재질 → 액자 → 슬롯 마커.
     //    액자 두께는 이웃 영역과의 간격에 맞춰 변마다 따로 줄인다.
     const active = (body.regions ?? []).filter((r) => r.slots?.length);
@@ -156,7 +225,8 @@ export async function POST(req: Request) {
       const tight = Object.entries(insets)
         .filter(([, v]) => v < 4)
         .map(([k]) => k);
-      if (tight.length && region.render !== "buttons") {
+      // 통짜 프레임 안에서는 영역별 액자를 안 그리므로 겹칠 일도 없다
+      if (!unified && tight.length && region.render !== "buttons") {
         notes.push(
           `${region.label}: ${tight.join("/")} 쪽이 이웃과 붙어 액자를 줄였습니다 (한 줄 띄우면 4px)`
         );
@@ -185,8 +255,14 @@ export async function POST(req: Request) {
         continue;
       }
 
+      // 통짜 프레임 안에서는 영역이 재질을 덧칠하지 않는다.
+      // 프레임 재질이 그대로 비쳐야 한 덩어리로 읽힌다.
+      const skipFill = Boolean(unified) && !region.material;
+
       // 2-a) 안쪽 채움. 절차적 재질이 지정돼 있으면 그걸 우선한다.
-      if (region.material) {
+      if (skipFill) {
+        layers.push({ label: region.label, slots: region.slots.length });
+      } else if (region.material) {
         const mat = await renderMaterial(
           region.material,
           panel.w,
@@ -235,11 +311,20 @@ export async function POST(req: Request) {
       // 2-b) 선반 널판 → 액자 → 슬롯 마커 순. 전부 재질 위에 얹혀야 선이 산다.
       const boardColor = shelfColor(region.materialColor ?? "#6b4423");
 
+      const frameStyle = unified
+        ? SUB_PANEL_STYLES[unified.panelStyle ?? "slate"] ?? SUB_PANEL_STYLES.slate
+        : style;
+
       const overlay = await renderSvgLayer(W, H, [
         region.shelves ? shelfBoardsSvg(wells, panel, boardColor) : "",
-        subPanelFrameSvg(panel, style, insets),
-        // 기본은 마커 없음. 그림 위에 격자가 얹히면 칸 구분이 드러난다.
-        slotMarkersSvg(wells, region.markers ?? "none"),
+        // 통짜 프레임이면 영역마다 액자를 두르지 않는다
+        unified ? "" : subPanelFrameSvg(panel, style, insets),
+        // 통짜 프레임 안의 기본 마커는 프레임 색으로 파인 슬롯
+        slotMarkersSvg(
+          wells,
+          region.markers ?? (unified ? "recessed" : "none"),
+          frameStyle
+        ),
       ]);
       canvas = await sharp(canvas)
         .composite([{ input: overlay, top: 0, left: 0 }])

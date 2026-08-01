@@ -90,18 +90,37 @@ export function subPanelFillSvg(box: Box, style: SubPanelStyle): string {
   return `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="${style.fill}"/>`;
 }
 
-export type MarkerStyle = "well" | "dotted" | "none";
+export type MarkerStyle = "well" | "dotted" | "recessed" | "none";
 
 /**
  * 슬롯 마커. rects는 우물 좌표(18x18)를 받는다.
  * - well   : 바닐라와 같은 회색 우물
  * - dotted : 레퍼런스 나무 선반 GUI에 쓰인 흰 점선 테두리
  */
-export function slotMarkersSvg(rects: Box[], style: MarkerStyle): string {
+export function slotMarkersSvg(
+  rects: Box[],
+  style: MarkerStyle,
+  panel?: SubPanelStyle
+): string {
   if (style === "none") return "";
 
   return rects
     .map((r) => {
+      // 프레임 색으로 파인 슬롯. 통짜 프레임 안에서 아이템 자리를 보여주되
+      // 바닐라 회색이 끼어들어 통일감을 깨지 않게 한다.
+      if (style === "recessed" && panel) {
+        // 18x18을 꽉 채우면 칸끼리 붙어 프레임 재질이 하나도 안 보인다.
+        // 1px 안으로 물려 16x16으로 그려 칸 사이에 2px 틈을 남긴다.
+        const x = r.x + 1;
+        const y = r.y + 1;
+        return [
+          `<rect x="${x}" y="${y}" width="16" height="16" fill="${panel.inner}"/>`,
+          `<rect x="${x}" y="${y}" width="15" height="1" fill="#000000" opacity="0.45"/>`,
+          `<rect x="${x}" y="${y}" width="1" height="15" fill="#000000" opacity="0.45"/>`,
+          `<rect x="${x + 1}" y="${y + 15}" width="15" height="1" fill="${panel.outer}" opacity="0.45"/>`,
+          `<rect x="${x + 15}" y="${y + 1}" width="1" height="15" fill="${panel.outer}" opacity="0.45"/>`,
+        ].join("");
+      }
       if (style === "well") {
         return [
           `<rect x="${r.x}" y="${r.y}" width="18" height="18" fill="${VANILLA.wellFace}"/>`,
