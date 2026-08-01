@@ -12,11 +12,18 @@ type Entry = {
   isGui?: boolean;
 };
 
+/** 폰트 json처럼 텍스트로 들어가는 파일 */
+type TextEntry = {
+  path: string;
+  content: string;
+};
+
 type Body = {
   name?: string;
   description?: string;
   packFormat?: number;
   entries: Entry[];
+  textFiles?: TextEntry[];
 };
 
 function decode(dataUrl: string): Buffer {
@@ -32,16 +39,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "잘못된 요청 본문" }, { status: 400 });
   }
 
-  if (!body.entries?.length) {
+  if (!body.entries?.length && !body.textFiles?.length) {
     return NextResponse.json({ error: "내보낼 텍스처가 없습니다." }, { status: 400 });
   }
 
   const files: PackFile[] = [];
   try {
-    for (const e of body.entries) {
+    for (const e of body.entries ?? []) {
       const data = decode(e.image);
       if (e.isGui) await assertGuiCanvas(data);
       files.push({ path: e.path, data });
+    }
+    for (const t of body.textFiles ?? []) {
+      files.push({ path: t.path, data: Buffer.from(t.content, "utf8") });
     }
   } catch (err) {
     return NextResponse.json(

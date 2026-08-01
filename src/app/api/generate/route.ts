@@ -3,6 +3,7 @@ import { findPreset, ITEM_SIZES, type ItemSize } from "@/lib/mc/canvas";
 import {
   buildGuiTexture,
   buildItemTexture,
+  buildFontTexture,
   assertGuiCanvas,
   upscaleNearest,
 } from "@/lib/image/pixelize";
@@ -10,16 +11,33 @@ import { generateImage, defaultProvider, type ProviderId } from "@/lib/ai/image"
 import {
   buildGuiPrompt,
   buildItemPrompt,
+  buildFontGuiPrompt,
   refineWithClaude,
   type ArtStyle,
 } from "@/lib/ai/prompt";
+import {
+  buildFontJson,
+  buildTitleStrings,
+  stringifyFontJson,
+  glyphCharAt,
+  type FontGuiSpec,
+} from "@/lib/mc/font";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 type Body = {
-  kind: "gui" | "item";
+  kind: "gui" | "item" | "font";
   prompt: string;
+  /** kind=font 전용 */
+  fontWidth?: number;
+  fontHeight?: number;
+  glyphTop?: number;
+  glyphLeft?: number;
+  namespace?: string;
+  fontName?: string;
+  assetName?: string;
+  glyphIndex?: number;
   presetId?: string;
   size?: number;
   pixelBlock?: number;
@@ -36,6 +54,12 @@ type Body = {
 };
 
 const dataUrl = (b: Buffer) => `data:image/png;base64,${b.toString("base64")}`;
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** 리소스팩 식별자는 소문자·숫자·_·-·. 만 허용된다. */
+const sanitizeId = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9_.-]/g, "_").replace(/^_+|_+$/g, "") || "custom";
 
 export async function POST(req: Request) {
   let body: Body;
@@ -77,6 +101,60 @@ export async function POST(req: Request) {
         provider: gen.provider,
         note: gen.note,
         prompt,
+      });
+    }
+
+    if (body.kind === "font") {
+      // 폰트 오프셋 GUI는 크기 제약이 없다. 다만 너무 크면 폰트 아틀라스가 부담이라 상한만 둔다.
+      const w = clamp(body.fontWidth ?? 320, 16, 1024);
+      const h = clamp(body.fontHeight ?? 256, 16, 1024);
+
+      let prompt = buildFontGuiPrompt(body.prompt, w, h, body.artStyle ?? "pixel_ui");
+      if (body.refine) prompt = await refineWithClaude(prompt);
+
+      const gen = await generateImage(
+        { prompt, width: w * 4, height: h * 4 },
+        provider
+      );
+      const png = await buildFontTexture(gen.png, w, h, {
+        colors: body.colors,
+        punch: body.punch,
+        keyColor: body.keyColor,
+        keyTolerance: body.keyTolerance,
+      });
+
+      const ns = sanitizeId(body.namespace ?? "custom");
+      const assetName = sanitizeId(body.assetName ?? "gui");
+      const spec: FontGuiSpec = {
+        namespace: ns,
+        fontName: sanitizeId(body.fontName ?? "gui"),
+        glyphChar: glyphCharAt(body.glyphIndex ?? 0),
+        texturePath: `gui/${assetName}.png`,
+        imageWidth: w,
+        imageHeight: h,
+        renderHeight: h, // 1:1 렌더
+        glyphTop: body.glyphTop ?? 0,
+        glyphLeft: body.glyphLeft ?? 0,
+      };
+
+      const title = buildTitleStrings(spec);
+      const fontJson = buildFontJson(spec);
+
+      return NextResponse.json({
+        kind: "font",
+        width: w,
+        height: h,
+        image: dataUrl(png),
+        provider: gen.provider,
+        note: gen.note,
+        prompt,
+        spec,
+        title,
+        font: {
+          path: `assets/${ns}/font/${spec.fontName}.json`,
+          content: stringifyFontJson(fontJson),
+        },
+        texture: { path: `assets/${ns}/textures/gui/${assetName}.png` },
       });
     }
 

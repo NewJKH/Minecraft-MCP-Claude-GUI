@@ -207,6 +207,30 @@ export async function assertGuiCanvas(buf: Buffer): Promise<void> {
   }
 }
 
+/**
+ * 폰트 오프셋 GUI용 텍스처. 크기 제약이 없으므로 요청한 크기 그대로 뽑는다.
+ * 256x256 캔버스에 얹지 않는다.
+ */
+export async function buildFontTexture(
+  input: Buffer,
+  width: number,
+  height: number,
+  opts: {
+    colors?: number;
+    punch?: number;
+    sharpen?: boolean;
+    dither?: number;
+    keyColor?: string;
+    keyTolerance?: number;
+  } = {}
+): Promise<Buffer> {
+  return pixelize(input, {
+    logicalWidth: width,
+    logicalHeight: height,
+    ...opts,
+  });
+}
+
 /** 아이템 텍스처는 정사각 16/32/64. */
 export async function buildItemTexture(
   input: Buffer,

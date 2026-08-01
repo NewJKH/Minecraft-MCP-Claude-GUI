@@ -88,6 +88,26 @@ export function buildGuiPrompt(
   return parts.join(" ");
 }
 
+/**
+ * 폰트 오프셋 GUI는 크기 제약이 없어 화면 전체를 쓰는 큰 판을 그릴 수 있다.
+ * 컨테이너 슬롯을 피할 이유도 없으므로 구도를 따로 제한하지 않는다.
+ */
+export function buildFontGuiPrompt(
+  userPrompt: string,
+  width: number,
+  height: number,
+  style: ArtStyle = "pixel_ui"
+): string {
+  const { lead, tail } = STYLE_RULES[style];
+  return [
+    `${lead}.`,
+    `${userPrompt},`,
+    tail + ",",
+    `composed for a ${width}:${height} frame, fills it edge to edge, no margin,`,
+    "no text",
+  ].join(" ");
+}
+
 export function buildItemPrompt(userPrompt: string, size: ItemSize): string {
   return [
     `${PIXEL_CORE}.`,
