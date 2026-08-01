@@ -222,6 +222,63 @@ function fabric(c: Canvas, base: RGB, rnd: () => number) {
   }
 }
 
+/** 대각 위험 표지 줄무늬. 칠이 벗겨진 자국까지 넣는다. */
+function hazardStripes(c: Canvas, base: RGB, rnd: () => number) {
+  const dark: RGB = [26, 24, 22];
+  const band = 12;
+
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const on = Math.floor((x + y) / band) % 2 === 0;
+      c.set(x, y, on ? base : dark);
+    }
+  }
+
+  // 칠 벗겨짐 — 아래 금속이 드러난다
+  const metal: RGB = [92, 92, 96];
+  for (let i = 0; i < (c.width * c.height) / 220; i++) {
+    const x0 = Math.floor(rnd() * c.width);
+    const y0 = Math.floor(rnd() * c.height);
+    const w = 1 + Math.floor(rnd() * 5);
+    const h = 1 + Math.floor(rnd() * 3);
+    c.rect(x0, y0, w, h, shade(metal, (rnd() - 0.5) * 0.1));
+  }
+}
+
+/** 부식 철판. 판 이음매 + 리벳 + 녹 얼룩 + 긁힘. */
+function rustedMetal(c: Canvas, base: RGB, rnd: () => number) {
+  metalPlate(c, base, rnd);
+
+  // 판 이음매
+  const seam = shade(base, -0.2);
+  for (let y = 24; y < c.height; y += 34) c.rect(0, y, c.width, 1, seam);
+
+  // 녹 얼룩. 위에서 아래로 흘러내린다.
+  const rustTones: RGB[] = [
+    [122, 66, 34],
+    [98, 52, 28],
+    [140, 84, 44],
+  ];
+  for (let i = 0; i < (c.width * c.height) / 90; i++) {
+    const x = Math.floor(rnd() * c.width);
+    const y = Math.floor(rnd() * c.height);
+    const tone = rustTones[Math.floor(rnd() * rustTones.length)];
+    const len = 1 + Math.floor(rnd() * 6);
+    for (let d = 0; d < len; d++) {
+      c.set(x + (rnd() > 0.8 ? 1 : 0), y + d, shade(tone, (rnd() - 0.5) * 0.08));
+    }
+  }
+
+  // 긁힘
+  const scratch = shade(base, 0.14);
+  for (let i = 0; i < c.width / 8; i++) {
+    const x0 = Math.floor(rnd() * c.width);
+    const y0 = Math.floor(rnd() * c.height);
+    const len = 3 + Math.floor(rnd() * 10);
+    for (let d = 0; d < len; d++) c.set(x0 + d, y0 - Math.floor(d / 3), scratch);
+  }
+}
+
 export async function renderMaterial(
   kind: MaterialKind,
   width: number,
@@ -248,6 +305,12 @@ export async function renderMaterial(
       break;
     case "fabric":
       fabric(c, base, rnd);
+      break;
+    case "hazard_stripes":
+      hazardStripes(c, base, rnd);
+      break;
+    case "rusted_metal":
+      rustedMetal(c, base, rnd);
       break;
     default:
       c.fill(base);

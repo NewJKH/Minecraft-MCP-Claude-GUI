@@ -28,6 +28,8 @@ export type MaterialKind =
   | "parchment"
   | "metal_plate"
   | "fabric"
+  | "hazard_stripes"
+  | "rusted_metal"
   | "flat";
 
 export const MATERIALS: { id: MaterialKind; label: string; defaultColor: string }[] = [
@@ -36,5 +38,7 @@ export const MATERIALS: { id: MaterialKind; label: string; defaultColor: string 
   { id: "parchment", label: "양피지", defaultColor: "#d9c9a3" },
   { id: "metal_plate", label: "금속판", defaultColor: "#4a5560" },
   { id: "fabric", label: "천", defaultColor: "#7a2f3a" },
+  { id: "hazard_stripes", label: "위험 줄무늬", defaultColor: "#d4a017" },
+  { id: "rusted_metal", label: "부식 철판", defaultColor: "#4a4a4e" },
   { id: "flat", label: "단색", defaultColor: "#3a3a44" },
 ];
