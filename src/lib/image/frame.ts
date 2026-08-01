@@ -112,6 +112,38 @@ export function slotMarkersSvg(rects: Box[], style: MarkerStyle): string {
     .join("");
 }
 
+/**
+ * 슬롯 줄마다 그 아래에 널판을 깐다. 레퍼런스 나무 선반 GUI를 "벽"이 아니라
+ * "선반"으로 읽히게 만드는 게 이 널판이다.
+ *
+ * @param rects 우물 좌표(18x18) 목록. 같은 y끼리 한 줄로 묶는다.
+ * @param bounds 널판이 가로로 뻗을 범위 (보통 서브패널 안쪽)
+ */
+export function shelfBoardsSvg(
+  rects: Box[],
+  bounds: Box,
+  color: { face: string; light: string; dark: string },
+  thickness = 6
+): string {
+  const rows = [...new Set(rects.map((r) => r.y))].sort((a, b) => a - b);
+  const x = bounds.x + 2;
+  const w = bounds.w - 4;
+
+  return rows
+    .map((rowY) => {
+      // 널판 윗면이 슬롯 바닥에 닿게
+      const y = rowY + 18;
+      return [
+        `<rect x="${x}" y="${y}" width="${w}" height="${thickness}" fill="${color.face}"/>`,
+        `<rect x="${x}" y="${y}" width="${w}" height="1" fill="${color.light}"/>`,
+        `<rect x="${x}" y="${y + thickness - 1}" width="${w}" height="1" fill="${color.dark}"/>`,
+        // 널판 아래 그림자
+        `<rect x="${x}" y="${y + thickness}" width="${w}" height="2" fill="${color.dark}" opacity="0.45"/>`,
+      ].join("");
+    })
+    .join("");
+}
+
 /** 여러 svg 조각을 한 장으로 렌더 */
 export async function renderSvgLayer(
   width: number,

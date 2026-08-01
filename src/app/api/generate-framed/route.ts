@@ -14,12 +14,20 @@ import {
   SUB_PANEL_STYLES,
   expandToPanel,
   renderSvgLayer,
+  shelfBoardsSvg,
   slotMarkersSvg,
   subPanelFillSvg,
   subPanelFrameSvg,
   vanillaPanelSvg,
   type MarkerStyle,
 } from "@/lib/image/frame";
+import {
+  MATERIALS,
+  hexToRgb,
+  renderMaterial,
+  shade,
+  type MaterialKind,
+} from "@/lib/image/materials";
 import { generateImage, defaultProvider, type ProviderId } from "@/lib/ai/image";
 import { refineWithClaude } from "@/lib/ai/prompt";
 import {
@@ -37,7 +45,26 @@ type FramedRegion = Region & {
   /** SUB_PANEL_STYLES 키 */
   panelStyle?: string;
   markers?: MarkerStyle;
+  /** 절차적 재질. 지정하면 AI 대신 이걸 쓴다 (훨씬 깔끔하다). */
+  material?: MaterialKind;
+  materialColor?: string;
+  seed?: number;
+  /** 슬롯 줄마다 아래에 널판을 깐다 */
+  shelves?: boolean;
 };
+
+/** 재질 색에서 널판 3톤을 뽑는다 */
+function shelfColor(hex: string) {
+  const base = hexToRgb(hex);
+  const css = (c: [number, number, number]) =>
+    `rgb(${c[0]},${c[1]},${c[2]})`;
+  // 널판은 뒷벽보다 어두워야 앞으로 튀어나와 보인다.
+  return {
+    face: css(shade(base, -0.07)),
+    light: css(shade(base, 0.16)),
+    dark: css(shade(base, -0.3)),
+  };
+}
 
 type Body = {
   presetId?: string;
@@ -106,8 +133,24 @@ export async function POST(req: Request) {
       const panel = expandToPanel(slotBox);
       const style = SUB_PANEL_STYLES[region.panelStyle ?? "purple"] ?? SUB_PANEL_STYLES.purple;
 
-      // 2-a) 안쪽 채움
-      if (body.useAiFill !== false && region.prompt?.trim()) {
+      // 2-a) 안쪽 채움. 절차적 재질이 지정돼 있으면 그걸 우선한다.
+      if (region.material) {
+        const mat = await renderMaterial(
+          region.material,
+          panel.w,
+          panel.h,
+          region.materialColor ??
+            MATERIALS.find((m) => m.id === region.material)?.defaultColor ??
+            "#6b4423",
+          region.seed ?? 1
+        );
+        canvas = await compositeRegion(canvas, mat, { width: W, height: H }, panel, [panel]);
+        layers.push({
+          label: region.label,
+          slots: region.slots.length,
+          provider: `material:${region.material}`,
+        });
+      } else if (body.useAiFill !== false && region.prompt?.trim()) {
         let prompt = materialPrompt(region.prompt);
         if (body.refine) prompt = await refineWithClaude(prompt);
 
@@ -137,13 +180,14 @@ export async function POST(req: Request) {
         layers.push({ label: region.label, slots: region.slots.length });
       }
 
-      // 2-b) 액자 + 슬롯 마커 (재질 위에 얹혀야 선이 살아난다)
+      // 2-b) 선반 널판 → 액자 → 슬롯 마커 순. 전부 재질 위에 얹혀야 선이 산다.
+      const wells = region.slots.map((i) => rects[i]).filter(Boolean).map(wellRect);
+      const boardColor = shelfColor(region.materialColor ?? "#6b4423");
+
       const overlay = await renderSvgLayer(W, H, [
+        region.shelves ? shelfBoardsSvg(wells, panel, boardColor) : "",
         subPanelFrameSvg(panel, style),
-        slotMarkersSvg(
-          region.slots.map((i) => rects[i]).filter(Boolean).map(wellRect),
-          region.markers ?? "dotted"
-        ),
+        slotMarkersSvg(wells, region.markers ?? "dotted"),
       ]);
       canvas = await sharp(canvas)
         .composite([{ input: overlay, top: 0, left: 0 }])
