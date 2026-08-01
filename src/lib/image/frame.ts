@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import type { Box } from "@/lib/mc/regions";
+import type { SubPanelStyle } from "@/lib/image/palettes";
 
 /**
  * GUI 프레임 렌더러.
@@ -23,24 +24,7 @@ export const VANILLA = {
   wellShadow: "#373737",
 };
 
-export type SubPanelStyle = {
-  /** 바깥 테두리 (밝은 톤) */
-  outer: string;
-  /** 안쪽 테두리 (어두운 톤) */
-  inner: string;
-  /** 채움. AI 텍스처를 넣을 거면 무시된다. */
-  fill: string;
-};
-
-/** 레퍼런스에서 자주 보이는 조합들 */
-export const SUB_PANEL_STYLES: Record<string, SubPanelStyle> = {
-  purple: { outer: "#b39ddb", inner: "#4a3b6b", fill: "#6d5a8c" },
-  blue: { outer: "#7cc4ff", inner: "#1b3a5c", fill: "#2d5a8a" },
-  red: { outer: "#ff8a80", inner: "#5c1b1b", fill: "#8a2d2d" },
-  green: { outer: "#a5d6a7", inner: "#1f4620", fill: "#3a7a3d" },
-  gold: { outer: "#ffd54f", inner: "#6b4c17", fill: "#a67c2a" },
-  slate: { outer: "#b0bec5", inner: "#2d383e", fill: "#4a5a63" },
-};
+export { SUB_PANEL_STYLES, type SubPanelStyle } from "@/lib/image/palettes";
 
 /** 서브패널이 슬롯 묶음 바깥으로 얼마나 나가는지 (테두리 두께 포함) */
 export const SUB_PANEL_INSET = 4;
@@ -66,17 +50,39 @@ export function vanillaPanelSvg(w: number, h: number): string {
  * 서브패널 테두리. 안쪽은 비워 두므로 AI 텍스처를 먼저 깔고 이걸 위에 얹으면 된다.
  * 바깥 2px 밝은 톤 + 안쪽 2px 어두운 톤 = 레퍼런스의 그 두꺼운 액자.
  */
-export function subPanelFrameSvg(box: Box, style: SubPanelStyle): string {
+export type FrameInsets = { top: number; right: number; bottom: number; left: number };
+
+/**
+ * 액자를 네 변 각각의 두께로 그린다.
+ *
+ * 링(사각 테두리)으로 그리면 한 변이 얇아질 때 나머지 변까지 같이 죽는다.
+ * 변마다 1px 줄을 바깥에서 안쪽으로 쌓아 올려 그 문제를 없앤다.
+ * 색 순서는 바깥부터 inner - outer - outer - inner.
+ */
+export function subPanelFrameSvg(
+  box: Box,
+  style: SubPanelStyle,
+  insets: FrameInsets | number = 4
+): string {
+  const t: FrameInsets =
+    typeof insets === "number"
+      ? { top: insets, right: insets, bottom: insets, left: insets }
+      : insets;
+
+  const layer = [style.inner, style.outer, style.outer, style.inner];
   const { x, y, w, h } = box;
-  const ring = (i: number, color: string) =>
-    `<rect x="${x + i}" y="${y + i}" width="${w - i * 2}" height="${h - i * 2}"
-       fill="none" stroke="${color}" stroke-width="1"/>`;
-  return [
-    ring(0, style.inner),
-    ring(1, style.outer),
-    ring(2, style.outer),
-    ring(3, style.inner),
-  ].join("");
+  const parts: string[] = [];
+
+  for (let i = 0; i < 4; i++) {
+    const color = layer[i];
+    if (i < t.top) parts.push(`<rect x="${x}" y="${y + i}" width="${w}" height="1" fill="${color}"/>`);
+    if (i < t.bottom)
+      parts.push(`<rect x="${x}" y="${y + h - 1 - i}" width="${w}" height="1" fill="${color}"/>`);
+    if (i < t.left) parts.push(`<rect x="${x + i}" y="${y}" width="1" height="${h}" fill="${color}"/>`);
+    if (i < t.right)
+      parts.push(`<rect x="${x + w - 1 - i}" y="${y}" width="1" height="${h}" fill="${color}"/>`);
+  }
+  return parts.join("");
 }
 
 /** 서브패널 안쪽을 단색으로 채우는 사각형 (AI 텍스처를 안 쓸 때) */
@@ -148,8 +154,16 @@ export function shelfBoardsSvg(
  * 타이틀 바. 레퍼런스(TELEPORT HUB / AUCTION / BOOST SHOP)가 전부 같은 구조다:
  * 액자를 두른 바 안에, 글자가 앉을 어두운 명판이 한 겹 더 들어간다.
  */
-export function titleBarSvg(box: Box, style: SubPanelStyle): string {
-  const inset = 4;
+export function titleBarSvg(
+  box: Box,
+  style: SubPanelStyle,
+  insets: FrameInsets | number = 4
+): string {
+  const t =
+    typeof insets === "number"
+      ? insets
+      : Math.min(insets.top, insets.right, insets.bottom, insets.left);
+  const inset = Math.max(1, t);
   const plaque: Box = {
     x: box.x + inset,
     y: box.y + inset,
@@ -159,7 +173,7 @@ export function titleBarSvg(box: Box, style: SubPanelStyle): string {
 
   return [
     subPanelFillSvg(box, style),
-    subPanelFrameSvg(box, style),
+    subPanelFrameSvg(box, style, insets),
     // 글자가 앉을 명판 (안쪽으로 파인 느낌)
     `<rect x="${plaque.x}" y="${plaque.y}" width="${plaque.w}" height="${plaque.h}" fill="${style.inner}"/>`,
     `<rect x="${plaque.x}" y="${plaque.y}" width="${plaque.w}" height="1" fill="${VANILLA.dark}" opacity="0.6"/>`,

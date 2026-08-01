@@ -92,6 +92,83 @@ export function regionRects(preset: GuiPreset, indices: number[]): Box[] {
     });
 }
 
+/**
+ * 영역마다 서브패널 박스를 잡는다.
+ *
+ * 서브패널은 슬롯 묶음 바깥으로 나가야 액자가 보이는데, 붙어 있는 줄에
+ * 서로 다른 영역을 두면 액자끼리 겹친다. 그래서 각 변마다 이웃까지의 간격을
+ * 재서 그 절반까지만 나가게 한다. 간격이 0이면 액자를 못 그리므로
+ * thickness 0으로 알려준다.
+ */
+export type Insets = { top: number; right: number; bottom: number; left: number };
+
+export function layoutPanels(
+  preset: GuiPreset,
+  regionSlots: number[][],
+  desiredInset = 4
+): { box: Box; insets: Insets }[] {
+  const boxes = regionSlots.map((s) => boundingBox(preset, s));
+
+  return boxes.map((box, i) => {
+    if (!box) {
+      return {
+        box: { x: 0, y: 0, w: 0, h: 0 },
+        insets: { top: 0, right: 0, bottom: 0, left: 0 },
+      };
+    }
+
+    // 각 변에서 허용되는 최대 확장량
+    const limits = { left: desiredInset, right: desiredInset, top: desiredInset, bottom: desiredInset };
+
+    for (let j = 0; j < boxes.length; j++) {
+      const other = boxes[j];
+      if (i === j || !other) continue;
+
+      const overlapX = box.x < other.x + other.w && other.x < box.x + box.w;
+      const overlapY = box.y < other.y + other.h && other.y < box.y + box.h;
+
+      if (overlapX) {
+        if (other.y + other.h <= box.y) {
+          limits.top = Math.min(limits.top, Math.floor((box.y - (other.y + other.h)) / 2));
+        }
+        if (other.y >= box.y + box.h) {
+          limits.bottom = Math.min(
+            limits.bottom,
+            Math.floor((other.y - (box.y + box.h)) / 2)
+          );
+        }
+      }
+      if (overlapY) {
+        if (other.x + other.w <= box.x) {
+          limits.left = Math.min(limits.left, Math.floor((box.x - (other.x + other.w)) / 2));
+        }
+        if (other.x >= box.x + box.w) {
+          limits.right = Math.min(
+            limits.right,
+            Math.floor((other.x - (box.x + box.w)) / 2)
+          );
+        }
+      }
+    }
+
+    // GUI 밖으로도 못 나간다
+    limits.left = Math.max(0, Math.min(limits.left, box.x - 1));
+    limits.top = Math.max(0, Math.min(limits.top, box.y - 1));
+    limits.right = Math.max(0, Math.min(limits.right, preset.guiWidth - 1 - (box.x + box.w)));
+    limits.bottom = Math.max(0, Math.min(limits.bottom, preset.guiHeight - 1 - (box.y + box.h)));
+
+    const expanded: Box = {
+      x: box.x - limits.left,
+      y: box.y - limits.top,
+      w: box.w + limits.left + limits.right,
+      h: box.h + limits.top + limits.bottom,
+    };
+
+    // 액자 두께는 변마다 따로 간다. 한 변이 붙어 있다고 나머지까지 죽이지 않는다.
+    return { box: expanded, insets: limits };
+  });
+}
+
 /** 아직 어느 영역에도 안 칠해진 슬롯 인덱스 */
 export function unpaintedSlots(preset: GuiPreset, regions: Region[]): number[] {
   const taken = new Set(regions.flatMap((r) => r.slots));

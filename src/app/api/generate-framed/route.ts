@@ -3,8 +3,8 @@ import sharp from "sharp";
 import { findPreset } from "@/lib/mc/canvas";
 import {
   allSlotRects,
-  boundingBox,
   containerSlotCount,
+  layoutPanels,
   wellRect,
   type Region,
 } from "@/lib/mc/regions";
@@ -12,7 +12,6 @@ import { buildFontTexture } from "@/lib/image/pixelize";
 import { compositeRegion } from "@/lib/image/compose";
 import {
   SUB_PANEL_STYLES,
-  expandToPanel,
   renderSvgLayer,
   buttonTilesSvg,
   scrollBarSvg,
@@ -142,14 +141,27 @@ export async function POST(req: Request) {
     // 1) 바닐라 회색 베벨 패널
     let canvas = await renderSvgLayer(W, H, [vanillaPanelSvg(W, H)]);
 
-    // 2) 영역마다: 재질 → 액자 → 슬롯 마커
-    for (const region of body.regions ?? []) {
-      if (!region.slots?.length) continue;
+    // 2) 영역마다: 재질 → 액자 → 슬롯 마커.
+    //    액자 두께는 이웃 영역과의 간격에 맞춰 변마다 따로 줄인다.
+    const active = (body.regions ?? []).filter((r) => r.slots?.length);
+    const placed = layoutPanels(
+      preset,
+      active.map((r) => r.slots)
+    );
 
-      const slotBox = boundingBox(preset, region.slots);
-      if (!slotBox) continue;
+    for (let ri = 0; ri < active.length; ri++) {
+      const region = active[ri];
+      const { box: panel, insets } = placed[ri];
 
-      const panel = expandToPanel(slotBox);
+      const tight = Object.entries(insets)
+        .filter(([, v]) => v < 4)
+        .map(([k]) => k);
+      if (tight.length && region.render !== "buttons") {
+        notes.push(
+          `${region.label}: ${tight.join("/")} 쪽이 이웃과 붙어 액자를 줄였습니다 (한 줄 띄우면 4px)`
+        );
+      }
+
       const style = SUB_PANEL_STYLES[region.panelStyle ?? "purple"] ?? SUB_PANEL_STYLES.purple;
       const wells = region.slots.map((i) => rects[i]).filter(Boolean).map(wellRect);
       const mode = region.render ?? "panel";
@@ -159,7 +171,7 @@ export async function POST(req: Request) {
         const layer = await renderSvgLayer(W, H, [
           mode === "buttons"
             ? buttonTilesSvg(wells, style)
-            : titleBarSvg(panel, style),
+            : titleBarSvg(panel, style, insets),
         ]);
         canvas = await sharp(canvas)
           .composite([{ input: layer, top: 0, left: 0 }])
@@ -225,7 +237,7 @@ export async function POST(req: Request) {
 
       const overlay = await renderSvgLayer(W, H, [
         region.shelves ? shelfBoardsSvg(wells, panel, boardColor) : "",
-        subPanelFrameSvg(panel, style),
+        subPanelFrameSvg(panel, style, insets),
         // 기본은 마커 없음. 그림 위에 격자가 얹히면 칸 구분이 드러난다.
         slotMarkersSvg(wells, region.markers ?? "none"),
       ]);

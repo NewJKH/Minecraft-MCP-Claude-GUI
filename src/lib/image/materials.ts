@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import type { MaterialKind } from "@/lib/image/palettes";
 
 /**
  * 절차적 재질.
@@ -79,22 +80,7 @@ function mulberry32(seed: number) {
   };
 }
 
-export type MaterialKind =
-  | "wood_planks"
-  | "stone_bricks"
-  | "parchment"
-  | "metal_plate"
-  | "fabric"
-  | "flat";
-
-export const MATERIALS: { id: MaterialKind; label: string; defaultColor: string }[] = [
-  { id: "wood_planks", label: "나무 판자", defaultColor: "#6b4423" },
-  { id: "stone_bricks", label: "돌 벽돌", defaultColor: "#5a5a5e" },
-  { id: "parchment", label: "양피지", defaultColor: "#d9c9a3" },
-  { id: "metal_plate", label: "금속판", defaultColor: "#4a5560" },
-  { id: "fabric", label: "천", defaultColor: "#7a2f3a" },
-  { id: "flat", label: "단색", defaultColor: "#3a3a44" },
-];
+export { MATERIALS, type MaterialKind } from "@/lib/image/palettes";
 
 /** width x height RGBA 버퍼를 만든다 */
 class Canvas {
