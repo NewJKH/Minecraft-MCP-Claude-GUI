@@ -253,6 +253,83 @@ export function scrollBarSvg(box: Box, style: SubPanelStyle, thumbAt = 0.15): st
   ].join("");
 }
 
+/**
+ * 줄무늬 차양. 상점 GUI 레퍼런스가 전부 갖고 있는 그 지붕.
+ *
+ * 세로 줄무늬 + 아래쪽 부채꼴(스캘럽) 마감 + 위쪽 하이라이트.
+ * GUI 폭보다 넓게 뻗어야 상점처럼 보이므로 캔버스가 GUI보다 커야 한다.
+ */
+export function awningSvg(
+  box: Box,
+  colorA: string,
+  colorB: string,
+  opts: { stripes?: number; scallop?: number; shadow?: string } = {}
+): string {
+  const stripes = opts.stripes ?? 7;
+  const scallop = opts.scallop ?? 5;
+  const sw = box.w / stripes;
+  const parts: string[] = [];
+
+  for (let i = 0; i < stripes; i++) {
+    const x = box.x + i * sw;
+    const color = i % 2 === 0 ? colorA : colorB;
+    // 줄무늬 몸통
+    parts.push(
+      `<rect x="${x}" y="${box.y}" width="${Math.ceil(sw)}" height="${box.h - scallop}" fill="${color}"/>`
+    );
+    // 아래쪽 부채꼴 마감
+    parts.push(
+      `<path d="M ${x} ${box.y + box.h - scallop}
+                Q ${x + sw / 2} ${box.y + box.h + scallop} ${x + sw} ${box.y + box.h - scallop} Z"
+         fill="${color}"/>`
+    );
+  }
+
+  return [
+    ...parts,
+    // 지붕 위쪽 하이라이트
+    `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="2" fill="#ffffff" opacity="0.35"/>`,
+    // 차양 아래 그림자
+    `<rect x="${box.x}" y="${box.y + box.h - scallop}" width="${box.w}" height="1" fill="${opts.shadow ?? "#000000"}" opacity="0.25"/>`,
+  ].join("");
+}
+
+/** 차양에 매달린 간판. 글자는 나중에 폰트로 얹는다. */
+export function signPlaqueSvg(box: Box, style: SubPanelStyle): string {
+  return [
+    // 매다는 줄 두 개
+    `<rect x="${box.x + 6}" y="${box.y - 4}" width="1" height="4" fill="${style.inner}"/>`,
+    `<rect x="${box.x + box.w - 7}" y="${box.y - 4}" width="1" height="4" fill="${style.inner}"/>`,
+    subPanelFillSvg(box, style),
+    subPanelFrameSvg(box, style, 2),
+  ].join("");
+}
+
+/** 옆에 세우는 세로 배너 (WELCOME 같은 것). */
+export function verticalBannerSvg(box: Box, style: SubPanelStyle): string {
+  return [
+    subPanelFillSvg(box, style),
+    subPanelFrameSvg(box, style, 2),
+    // 아래쪽 제비꼬리
+    `<path d="M ${box.x} ${box.y + box.h}
+              L ${box.x + box.w / 2} ${box.y + box.h - 5}
+              L ${box.x + box.w} ${box.y + box.h} Z"
+       fill="${style.inner}"/>`,
+  ].join("");
+}
+
+/** 상점 카운터 널판 (앞으로 튀어나온 판) */
+export function counterSvg(
+  box: Box,
+  color: { face: string; light: string; dark: string }
+): string {
+  return [
+    `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="${color.face}"/>`,
+    `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="1" fill="${color.light}"/>`,
+    `<rect x="${box.x}" y="${box.y + box.h - 1}" width="${box.w}" height="1" fill="${color.dark}"/>`,
+  ].join("");
+}
+
 /** 여러 svg 조각을 한 장으로 렌더 */
 export async function renderSvgLayer(
   width: number,

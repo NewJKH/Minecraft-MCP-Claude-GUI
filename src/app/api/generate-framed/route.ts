@@ -15,8 +15,10 @@ import { compositeRegion } from "@/lib/image/compose";
 import {
   SUB_PANEL_STYLES,
   renderSvgLayer,
+  awningSvg,
   buttonTilesSvg,
   scrollBarSvg,
+  signPlaqueSvg,
   shelfBoardsSvg,
   slotMarkersSvg,
   titleBarSvg,
@@ -79,6 +81,23 @@ function shelfColor(hex: string) {
 
 type Body = {
   presetId?: string;
+  /**
+   * 캔버스를 GUI보다 크게 잡는다. 차양·배너처럼 GUI 밖으로 삐져나가는 장식을
+   * 그리려면 필요하다. offset은 캔버스 안에서 GUI 원점(0,0)이 놓이는 자리.
+   */
+  canvas?: { width: number; height: number; offsetX: number; offsetY: number };
+  /** 줄무늬 차양 */
+  awning?: {
+    colorA?: string;
+    colorB?: string;
+    stripes?: number;
+    height?: number;
+    /** GUI 폭보다 양옆으로 얼마나 더 뻗을지 */
+    overhang?: number;
+    /** 차양 아래에 매달 간판 (폭) */
+    signWidth?: number;
+    signStyle?: string;
+  };
   /**
    * 통짜 프레임. 지정하면 컨테이너 슬롯 전체를 감싸는 액자를 하나만 그리고,
    * 안쪽 영역들은 자기 액자 없이 재질·슬롯만 얹는다.
@@ -152,9 +171,25 @@ export async function POST(req: Request) {
   const notes: string[] = [];
   const layers: { label: string; slots: number; provider?: string }[] = [];
 
+  // 캔버스는 GUI보다 클 수 있다. GUI 원점은 캔버스 안 (OX, OY)에 놓인다.
+  const CW = body.canvas?.width ?? W;
+  const CH = body.canvas?.height ?? H;
+  const OX = body.canvas?.offsetX ?? 0;
+  const OY = body.canvas?.offsetY ?? 0;
+
+  /** GUI 좌표 → 캔버스 좌표 */
+  const sh = (b: Box): Box => ({ x: b.x + OX, y: b.y + OY, w: b.w, h: b.h });
+  /** GUI 좌표계로 그린 svg 조각들을 캔버스에 얹는다 */
+  const guiLayer = (parts: string[]) =>
+    renderSvgLayer(CW, CH, [
+      `<g transform="translate(${OX},${OY})">${parts.join("")}</g>`,
+    ]);
+  const over = async (base: Buffer, layer: Buffer) =>
+    sharp(base).composite([{ input: layer, top: 0, left: 0 }]).png().toBuffer();
+
   try {
     // 1) 바닐라 회색 베벨 패널
-    let canvas = await renderSvgLayer(W, H, [vanillaPanelSvg(W, H)]);
+    let canvas = await guiLayer([vanillaPanelSvg(W, H)]);
 
     // 1-b) 통짜 프레임. 컨테이너 슬롯 전체를 한 액자로 감싼다.
     const unified = body.frame;
@@ -188,23 +223,18 @@ export async function POST(req: Request) {
           canvas = await compositeRegion(
             canvas,
             mat,
-            { width: W, height: H },
-            frameBox,
-            [frameBox]
+            { width: CW, height: CH },
+            sh(frameBox),
+            [sh(frameBox)]
           );
         } else {
-          const fill = await renderSvgLayer(W, H, [subPanelFillSvg(frameBox, fStyle)]);
-          canvas = await sharp(canvas)
-            .composite([{ input: fill, top: 0, left: 0 }])
-            .png()
-            .toBuffer();
+          canvas = await over(canvas, await guiLayer([subPanelFillSvg(frameBox, fStyle)]));
         }
 
-        const border = await renderSvgLayer(W, H, [subPanelFrameSvg(frameBox, fStyle, 4)]);
-        canvas = await sharp(canvas)
-          .composite([{ input: border, top: 0, left: 0 }])
-          .png()
-          .toBuffer();
+        canvas = await over(
+          canvas,
+          await guiLayer([subPanelFrameSvg(frameBox, fStyle, 4)])
+        );
 
         layers.push({ label: "프레임", slots: 0, provider: unified.material ?? "flat" });
       }
@@ -238,15 +268,14 @@ export async function POST(req: Request) {
 
       // 버튼 줄 / 타이틀 바는 재질도 액자도 필요 없다. 통째로 그리고 넘어간다.
       if (mode !== "panel") {
-        const layer = await renderSvgLayer(W, H, [
-          mode === "buttons"
-            ? buttonTilesSvg(wells, style)
-            : titleBarSvg(panel, style, insets),
-        ]);
-        canvas = await sharp(canvas)
-          .composite([{ input: layer, top: 0, left: 0 }])
-          .png()
-          .toBuffer();
+        canvas = await over(
+          canvas,
+          await guiLayer([
+            mode === "buttons"
+              ? buttonTilesSvg(wells, style)
+              : titleBarSvg(panel, style, insets),
+          ])
+        );
         layers.push({
           label: region.label,
           slots: region.slots.length,
@@ -272,7 +301,9 @@ export async function POST(req: Request) {
             "#6b4423",
           region.seed ?? 1
         );
-        canvas = await compositeRegion(canvas, mat, { width: W, height: H }, panel, [panel]);
+        canvas = await compositeRegion(canvas, mat, { width: CW, height: CH }, sh(panel), [
+          sh(panel),
+        ]);
         layers.push({
           label: region.label,
           slots: region.slots.length,
@@ -293,18 +324,16 @@ export async function POST(req: Request) {
           colors: body.colors,
           punch: body.punch,
         });
-        canvas = await compositeRegion(canvas, art, { width: W, height: H }, panel, [panel]);
+        canvas = await compositeRegion(canvas, art, { width: CW, height: CH }, sh(panel), [
+          sh(panel),
+        ]);
         layers.push({
           label: region.label,
           slots: region.slots.length,
           provider: gen.provider,
         });
       } else {
-        const fill = await renderSvgLayer(W, H, [subPanelFillSvg(panel, style)]);
-        canvas = await sharp(canvas)
-          .composite([{ input: fill, top: 0, left: 0 }])
-          .png()
-          .toBuffer();
+        canvas = await over(canvas, await guiLayer([subPanelFillSvg(panel, style)]));
         layers.push({ label: region.label, slots: region.slots.length });
       }
 
@@ -315,21 +344,20 @@ export async function POST(req: Request) {
         ? SUB_PANEL_STYLES[unified.panelStyle ?? "slate"] ?? SUB_PANEL_STYLES.slate
         : style;
 
-      const overlay = await renderSvgLayer(W, H, [
-        region.shelves ? shelfBoardsSvg(wells, panel, boardColor) : "",
-        // 통짜 프레임이면 영역마다 액자를 두르지 않는다
-        unified ? "" : subPanelFrameSvg(panel, style, insets),
-        // 통짜 프레임 안의 기본 마커는 프레임 색으로 파인 슬롯
-        slotMarkersSvg(
-          wells,
-          region.markers ?? (unified ? "recessed" : "none"),
-          frameStyle
-        ),
-      ]);
-      canvas = await sharp(canvas)
-        .composite([{ input: overlay, top: 0, left: 0 }])
-        .png()
-        .toBuffer();
+      canvas = await over(
+        canvas,
+        await guiLayer([
+          region.shelves ? shelfBoardsSvg(wells, panel, boardColor) : "",
+          // 통짜 프레임이면 영역마다 액자를 두르지 않는다
+          unified ? "" : subPanelFrameSvg(panel, style, insets),
+          // 통짜 프레임 안의 기본 마커는 프레임 색으로 파인 슬롯
+          slotMarkersSvg(
+            wells,
+            region.markers ?? (unified ? "recessed" : "none"),
+            frameStyle
+          ),
+        ])
+      );
     }
 
     // 2-c) 스크롤바
@@ -337,27 +365,56 @@ export async function POST(req: Request) {
       const sb = body.scrollBar;
       const style =
         SUB_PANEL_STYLES[sb.panelStyle ?? "slate"] ?? SUB_PANEL_STYLES.slate;
-      const layer = await renderSvgLayer(W, H, [
-        scrollBarSvg(
-          { x: sb.x, y: sb.y, w: sb.w ?? 8, h: sb.h },
-          style,
-          sb.thumbAt ?? 0.15
-        ),
-      ]);
-      canvas = await sharp(canvas)
-        .composite([{ input: layer, top: 0, left: 0 }])
-        .png()
-        .toBuffer();
+      canvas = await over(
+        canvas,
+        await guiLayer([
+          scrollBarSvg({ x: sb.x, y: sb.y, w: sb.w ?? 8, h: sb.h }, style, sb.thumbAt ?? 0.15),
+        ])
+      );
+    }
+
+    // 2-d) 차양. GUI 밖으로 뻗으므로 캔버스 좌표에 직접 그린다.
+    if (body.awning && frameBox) {
+      const a = body.awning;
+      const over_ = a.overhang ?? 10;
+      const ah = a.height ?? 22;
+      const box: Box = {
+        x: sh(frameBox).x - over_,
+        y: sh(frameBox).y - ah - 2,
+        w: frameBox.w + over_ * 2,
+        h: ah,
+      };
+      const parts = [
+        awningSvg(box, a.colorA ?? "#7c3aed", a.colorB ?? "#f1f1f1", {
+          stripes: a.stripes ?? 7,
+        }),
+      ];
+
+      if (a.signWidth) {
+        const sStyle =
+          SUB_PANEL_STYLES[a.signStyle ?? "gold"] ?? SUB_PANEL_STYLES.gold;
+        // 간판은 차양과 판때기 경계에 걸치게 둔다. 안쪽으로 들어오면 슬롯을 덮는다.
+        parts.push(
+          signPlaqueSvg(
+            {
+              x: Math.round(box.x + box.w / 2 - a.signWidth / 2),
+              y: sh(frameBox).y - 9,
+              w: a.signWidth,
+              h: 14,
+            },
+            sStyle
+          )
+        );
+      }
+
+      canvas = await over(canvas, await renderSvgLayer(CW, CH, parts));
+      layers.push({ label: "차양", slots: 0, provider: "awning" });
     }
 
     // 3) 플레이어 인벤토리는 바닐라 그대로
     if (body.drawPlayerInventory !== false && preset.playerInventory) {
       const invRects = rects.slice(containerCount).map(wellRect);
-      const inv = await renderSvgLayer(W, H, [slotMarkersSvg(invRects, "well")]);
-      canvas = await sharp(canvas)
-        .composite([{ input: inv, top: 0, left: 0 }])
-        .png()
-        .toBuffer();
+      canvas = await over(canvas, await guiLayer([slotMarkersSvg(invRects, "well")]));
     }
 
     // 4) 폰트 GUI 자산으로 내보낸다 (항상)
@@ -368,17 +425,18 @@ export async function POST(req: Request) {
       fontName: assetName,
       glyphChar: glyphCharAt(0),
       texturePath: `gui/${assetName}.png`,
-      imageWidth: W,
-      imageHeight: H,
-      renderHeight: H,
-      glyphTop: body.glyphTop ?? 0,
-      glyphLeft: body.glyphLeft ?? 0,
+      imageWidth: CW,
+      imageHeight: CH,
+      renderHeight: CH,
+      // 캔버스가 GUI보다 크면 이미지 좌상단은 GUI 원점보다 왼쪽·위에 있다
+      glyphTop: body.glyphTop ?? -OY,
+      glyphLeft: body.glyphLeft ?? -OX,
     };
 
     return NextResponse.json({
       kind: "framed",
-      width: W,
-      height: H,
+      width: CW,
+      height: CH,
       image: dataUrl(canvas),
       layers,
       note: notes.length ? notes.join(" / ") : undefined,
